@@ -127,3 +127,14 @@ Na końcu testów uruchamiana jest funkcja, usuwająca wszystkie pliki powstałe
 
 ## Plik 
 W folderze `\example` znajduje się przykładowy plik, z którego będziemy deserializować dane.
+
+## Komendy, które wykonałem 
+sudo apt install libboost-all-dev
+sudo apt install libasio-dev
+git clone https://github.com/catchorg/Catch2.git
+cd Catch2
+git checkout v3.4.0  # przykładowa wersja 3.x
+cmake -Bbuild -H. -DBUILD_TESTING=OFF
+sudo cmake --install build
+sudo apt install libfmt-dev
+
