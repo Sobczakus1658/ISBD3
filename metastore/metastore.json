@@ -1,0 +1,31 @@
+{
+  "tables": {
+    "users": {
+       "id": "1",
+      "columns": {
+        "id": "INT",
+        "name": "STRING",
+        "age": "INT"
+      },
+      "location": "/data/users/",
+      "files": [
+        "part-000.parquet",
+        "part-001.parquet"
+      ]
+    },
+    "orders": {
+      "id": "2",
+      "columns": {
+        "id": "INT",
+        "user_id": "INT",
+        "amount": "DOUBLE"
+      },
+      "location": "/data/orders/",
+      "files": [
+        "part-000.parquet",
+        "part-001.parquet",
+        "part-002.parquet"
+      ]
+    }
+  }
+}

@@ -13,9 +13,19 @@ inline constexpr uint32_t batch_magic = 0x69696969;
 static constexpr uint8_t INTEGER = 0;
 static constexpr uint8_t STRING  = 1;
 
+enum class CREATE_TABLE_ERROR {
+    NONE,
+    TABLE_EXISTS
+};
+
+struct CreateTableResult {
+    std::string tableId;
+    CREATE_TABLE_ERROR error;
+};
 using namespace std;
 
 using ColumnInfo = pair<uint64_t, uint8_t>;
+using ColumnInfoShow = pair<string, string>;
 
 struct IntColumn {
     string name;

@@ -17,8 +17,10 @@ SRC = main.cpp \
       serialization/serializator.cpp \
       serialization/deserializator.cpp \
       validation/validator.cpp \
-      statistics/statistics.cpp
-
+      statistics/statistics.cpp \
+      service/utils.cpp \
+      service/schemaService.cpp \
+      metastore/metastore.cpp
 
 SRC += $(wildcard restbed-old/source/corvusoft/restbed/*.cpp)
 SRC += $(wildcard restbed-old/source/corvusoft/restbed/detail/*.cpp)

@@ -137,4 +137,5 @@ git checkout v3.4.0  # przykładowa wersja 3.x
 cmake -Bbuild -H. -DBUILD_TESTING=OFF
 sudo cmake --install build
 sudo apt install libfmt-dev
+sudo apt install -y nlohmann-json3-dev
 
