@@ -15,6 +15,7 @@ json prepareTablesInfo(const map<uint64_t, string>& tables) {
             {"name", name}
         });
     }
+    return response_json;
 }
 
 
