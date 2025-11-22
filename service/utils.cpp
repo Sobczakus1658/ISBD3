@@ -1,10 +1,9 @@
 #include "utils.h"
-
+#include <iostream>
 #include "../queries/queries.h"
 
 using json = nlohmann::json;
 
-#include <iostream>
 using namespace std;
 using namespace restbed;
 
@@ -29,19 +28,20 @@ json queryResultToJson(const QueryResult& result) {
     return j;
 }
 
+string prepareTableInfo(TableInfo& tableInfo){
+    json response_json;
 
-string createJson(const map<uint64_t, string>& tables) {
-    std::string json = "[";
-    bool first = true;
-    for (const auto &p : tables) {
-        if (!first) json += ",";
-        first = false;
-        json += "{\"id\":" + std::to_string(p.first) + ",\"name\":\"" + p.second + "\"}";
+    response_json["id"] = tableInfo.id;
+    response_json["name"] = tableInfo.name;
+    response_json["info"] = json::array();
+    for (const auto &col : tableInfo.info) {
+        json colobj;
+        colobj["name"] = col.first;
+        colobj["type"] = col.second;
+        response_json["info"].push_back(colobj);
     }
-    json += "]";
-    return json;
+    return response_json.dump();
 }
-
 
 json queryResponseToJson(const QueryCreatedResponse &response) {
     json j;
@@ -78,8 +78,7 @@ QueryType recogniseQuery(const json &query) {
 }
 
 void getTablesHandler(const shared_ptr<Session> session) {
-    map<uint64_t, string> tables = getTables();
-    session->close(200, createJson(tables), { {"Content-Type", "application/json"} });
+    session->close(200, getTables().dump(), { {"Content-Type", "application/json"} });
 }
 
 void getTableByIdHandler(const shared_ptr<Session> session) {
@@ -92,18 +91,7 @@ void getTableByIdHandler(const shared_ptr<Session> session) {
         session->close(404, "{\"error\":\"Table not found\"}\n", {{"Content-Type", "application/json"}});
         return;
     }
-    json response_json;
-    response_json["id"] = tableInfo->id;
-    response_json["name"] = tableInfo->name;
-    response_json["info"] = json::array();
-    for (const auto &col : tableInfo->info) {
-        json colobj;
-        colobj["name"] = col.first;
-        colobj["type"] = col.second;
-        response_json["info"].push_back(colobj);
-    }
-
-    session->close(200, response_json.dump(),{{"Content-Type", "application/json"}});
+    session->close(200, prepareTableInfo(tableInfo.value()),{{"Content-Type", "application/json"}});
 }
 
 void createTableHandler(const shared_ptr<Session> session) {
@@ -113,27 +101,29 @@ void createTableHandler(const shared_ptr<Session> session) {
         [](const std::shared_ptr<restbed::Session> session, const restbed::Bytes &body) {
 
             std::string json_body(body.begin(), body.end());
-            json parsed;
-            try {
-                parsed = json::parse(json_body);
-            } catch (const std::exception &e) {
-                json err;
-                err["error"] = std::string("Invalid JSON: ") + e.what();
-                err["raw"] = json_body;
-                session->close(400, err.dump(), {{"Content-Type","application/json"}});
-                return;
-            }
-
+            json parsed = json::parse(json_body);
 
             CreateTableResult result = createTable(parsed);
-
             json response_json;
-            if (result.error == CREATE_TABLE_ERROR::NONE) {
-                response_json["tableId"] = result.tableId;
-                session->close(200, response_json.dump(), { {"Content-Type", "application/json"} });
-            } else {
-                response_json["message"] = "Cannot create table";
-                session->close(400, response_json.dump(), { {"Content-Type", "application/json"} });
+
+            switch (result.error){
+                case CREATE_TABLE_ERROR::NONE:
+                    response_json["tableId"] = result.tableId;
+                    session->close(200, response_json.dump(), { {"Content-Type", "application/json"} });
+                    break;
+
+                case CREATE_TABLE_ERROR::INVALID_COLUMN_TYPE:
+                    response_json["problems"] = {
+                        { {"error", "Invalid column type. Allowed: INT64, VARCHAR"} }
+                    };
+                    session->close(400, response_json.dump(), { {"Content-Type", "application/json"} });
+                    break;
+
+                case CREATE_TABLE_ERROR::TABLE_EXISTS:
+                    response_json["problems"] = {
+                        { {"error", "A table with the specified name already exists."} }
+                    };
+                    session->close(400, response_json.dump(), { {"Content-Type", "application/json"} });
             }
         }
     );
@@ -149,8 +139,12 @@ void deleteTableHandler(const shared_ptr<Session> session) {
         session->close(404, "{\"error during deleting Table\"}\n", {{"Content-Type", "application/json"}});
         return;
     }
-    session->close(200, "true",{{"Content-Type", "application/json"}});
+    session->close(200, "",{{"Content-Type", "application/json"}});
 
+}
+
+void getQueriesHandler(const shared_ptr<Session> session) {
+    session->close(200, getQueries().dump(),{{"Content-Type", "application/json"}});
 }
 
 void submitQueryHandler(const shared_ptr<Session> session)
@@ -231,6 +225,10 @@ void setUpApi(){
     auto queryResource = make_shared<Resource>();
     queryResource->set_path("/query");
     queryResource->set_method_handler("POST", submitQueryHandler);
+
+    auto getQueriesResource = std::make_shared<Resource>();
+    getQueriesResource->set_path("/queries");
+    getQueriesResource->set_method_handler("GET", getQueriesHandler);
 
     auto queryResultResource = make_shared<Resource>();
     queryResultResource->set_path("/result/{queryId: .*}");

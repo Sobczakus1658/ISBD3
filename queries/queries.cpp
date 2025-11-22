@@ -27,7 +27,7 @@ void initQuery(std::string id){
     json new_entry = json::object();
     new_entry["id"] = id;
     new_entry["rowCount"] = 0;
-
+    new_entry["status"] = QueryStatus::CREATED;
     new_entry["columns"] = json::array();
 
     if (!results.is_array()) {
@@ -50,7 +50,23 @@ void initQuery(std::string id){
     out << std::setw(2) << results << std::endl;
     out.close();
 }
+void modifyStatus(std::string id, QueryStatus status) {
+    json results = readFileResult();
 
+    auto it = std::find_if(results.begin(), results.end(),
+        [&id](const json& entry) -> bool {
+            return entry.value("id", "") == id;
+        });
+    if (it == results.end()) {
+        std::cerr << "modifyStatus: id not found: " << id << "\n";
+        return;
+    }
+    (*it)["status"] = static_cast<int>(status);
+
+    std::ofstream outFile(basePath);
+    outFile << std::setw(2) << results << std::endl;
+    outFile.close();
+}
 void modifyQuery(std::string id, vector<Batch>& batches){
     cout<<batches.size();
     cout.flush();
@@ -132,4 +148,11 @@ nlohmann::json getQueryResult(const std::string &id) {
         }
     }
     return json::object();
+}
+
+nlohmann::json getQueries(){
+    json results = readFileResult();
+    json out = json::array();
+    //TODO
+    return out;
 }

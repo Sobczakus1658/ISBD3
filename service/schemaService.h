@@ -10,7 +10,7 @@
 
 using json = nlohmann::json;
 
-std::map<uint64_t, std::string> getTables(); 
+json getTables(); 
 
 std::optional<TableInfo> getTableInfoByID(uint64_t id);
 

@@ -141,7 +141,16 @@ CreateTableResult createTableMetastore(const json& json_info) {
 
     new_entry["columns"] = json::object();
     for (auto &c : obj["columns"].items()) {
-        new_entry["columns"][c.key()] = c.value();
+        const std::string col_name = c.key();
+        const json &col_type_json = c.value();
+        if (!col_type_json.is_string()) {
+            return CreateTableResult{"", CREATE_TABLE_ERROR::INVALID_COLUMN_TYPE};
+        }
+        std::string col_type = col_type_json.get<std::string>();
+        if (col_type != "INT64" && col_type != "VARCHAR") {
+            return CreateTableResult{"", CREATE_TABLE_ERROR::INVALID_COLUMN_TYPE};
+        }
+        new_entry["columns"][col_name] = col_type;
     }
     new_entry["location"] = "";
     new_entry["files"] = json::array();

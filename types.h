@@ -21,7 +21,8 @@ static const std::string base = std::filesystem::current_path() / "batches/";
 
 enum class CREATE_TABLE_ERROR {
     NONE,
-    TABLE_EXISTS
+    TABLE_EXISTS,
+    INVALID_COLUMN_TYPE
 };
 
 struct CreateTableResult {

@@ -8,3 +8,5 @@ void initQuery(std::string id);
 void modifyQuery(std::string id, vector<Batch>& batches);
 
 nlohmann::json getQueryResult(const std::string &id);
+
+nlohmann::json getQueries();
