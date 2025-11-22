@@ -1,5 +1,4 @@
 #include "queries.h"
-#include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -48,8 +47,6 @@ void initQuery(std::string id){
     }
     results.push_back(new_entry);
     std::ofstream out(basePath);
-    cout<<results.dump();
-    cout.flush();
     out << std::setw(2) << results << std::endl;
     out.close();
 }
@@ -118,4 +115,21 @@ void modifyQuery(std::string id, vector<Batch>& batches){
     std::ofstream outFile(basePath);
     outFile << std::setw(2) << results << std::endl;
     outFile.close();
+}
+
+nlohmann::json getQueryResult(const std::string &id) {
+    json results = readFileResult();
+    for (const auto &entry : results) {
+        if (entry.contains("id") && entry["id"].get<std::string>() == id) {
+            json out = json::object();
+            out["rowCount"] = entry.value("rowCount", 0);
+            if (entry.contains("columns") && entry["columns"].is_array()) {
+                out["columns"] = entry["columns"];
+            } else {
+                out["columns"] = json::array();
+            }
+            return out;
+        }
+    }
+    return json::object();
 }

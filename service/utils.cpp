@@ -1,12 +1,34 @@
 #include "utils.h"
 
+#include "../queries/queries.h"
+
 using json = nlohmann::json;
 
 #include <iostream>
 using namespace std;
 using namespace restbed;
 
-void f6() { }
+json queryResultToJson(const QueryResult& result) {
+    json j;
+
+    j["rowCount"] = result.rowCount;
+    j["columns"] = json::array();
+
+    for (const auto& col : result.columns) {
+        json colJson = std::visit([](const auto& vec) {
+            json columnJson = json::array();
+            for (const auto& v : vec) {
+                columnJson.push_back(v);
+            }
+            return columnJson;
+        }, col);
+
+        j["columns"].push_back(colJson);
+    }
+
+    return j;
+}
+
 
 string createJson(const map<uint64_t, string>& tables) {
     std::string json = "[";
@@ -141,8 +163,6 @@ void submitQueryHandler(const shared_ptr<Session> session)
             json json_message = json::parse(json_body);
             QueryType type = recogniseQuery(json_message);
             const auto &def = json_message["queryDefinition"];
-            cout<<"-Raz" << "\n";
-            cout.flush();
             switch(type) {
                 case QueryType::COPY: {
                     const auto &cq = def["CopyQuery"];
@@ -167,8 +187,6 @@ void submitQueryHandler(const shared_ptr<Session> session)
                     return;
                 } 
                 case QueryType:: SELECT: {
-                    cout<<"Zero" << "\n";
-                    cout.flush();
                     const auto &cq = def["SelectQuery"];
                     string queryId = selectTable(cq["tableName"]);
 
@@ -188,8 +206,12 @@ void submitQueryHandler(const shared_ptr<Session> session)
 
 void getQueryResultHandler(const shared_ptr<Session> session)
 {
-    f6();
-    session->close(200, "[]", { {"Content-Type", "application/json"} });
+    const auto request = session->get_request();
+    std::string queryIdStr = request->get_path_parameter("queryId");
+    json result = getQueryResult(queryIdStr);
+    json response = json::array();
+    response.push_back(result);
+    session->close(200, response.dump(), { {"Content-Type", "application/json"} });
 }
 void setUpApi(){
 

@@ -24,8 +24,7 @@ std::string get_path(const TableInfo &info){
     if (!fs::exists(tableDir)) {
         fs::create_directories(tableDir);
     }
-    fs::path tableDirFile = fs::path(tableDir) / info.name;
-    return tableDirFile.string();
+    return tableDir;
 }
 
 QueryCreatedResponse copyCSV(CopyQuery q){
@@ -133,8 +132,6 @@ std::string selectTable(std::string name){
     string queryId = std::to_string(id);
     initQuery(queryId);
     for (const auto &f : info.files) {
-        cout<<"Trzy" << "\n";
-        cout.flush();
         std::string path = info.location;
         if (!path.empty() && path.back() != '/' && path.back() != '\\') path.push_back('/');
         path += f;
@@ -144,3 +141,4 @@ std::string selectTable(std::string name){
     }
     return queryId;
 }
+

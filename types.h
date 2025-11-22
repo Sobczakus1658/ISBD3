@@ -31,12 +31,10 @@ struct CreateTableResult {
 
 using Column = std::variant<std::vector<int64_t>, std::vector<std::string>>;
 
-struct QueryResultBatch {
+struct QueryResult {
     int rowCount;
     std::vector<Column> columns;
 };
-
-using QueryResult = std::vector<QueryResultBatch>;
 
 using ColumnInfo = pair<uint64_t, uint8_t>;
 using ColumnInfoShow = pair<string, string>;

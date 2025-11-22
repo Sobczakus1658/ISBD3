@@ -7,10 +7,15 @@
 #include <cstdio>
 #include <algorithm>
 
-std::string nextFilePath(const std::string& folderPath, uint32_t counter){
-    char buf[512];
-    snprintf(buf, sizeof(buf), "%s.part%03u", folderPath.c_str(), counter);
-    return std::string(buf);
+
+std::string nameFile(uint32_t counter){
+    char buf[32];
+    snprintf(buf, sizeof(buf), "part%03u", counter);
+    return string(buf);
+};
+
+std::string nextFilePath(const std::string& folderPath, string name){
+    return folderPath + "/" + name;
 }
 
 std::unordered_map<std::string, ColumnInfo> initMap(Batch batch) {
@@ -67,10 +72,9 @@ std::vector<std::string> serializator(std::vector<Batch> &batches, const std::st
     if (!batches.empty()) last_offset = initMap(batches[0]);
     else last_offset = initMap(Batch());
 
-    std::string name = nextFilePath(folderPath, file_counter);
+    std::string name = nameFile(file_counter);
+    std::ofstream out = startFile(nextFilePath(folderPath, name));
     filesNames.push_back(name);
-    std::ofstream out = startFile(name);
-    if (!out) return filesNames;
 
     uint64_t file_pos = sizeof(file_magic);
     for (uint32_t batch_idx = 0; batch_idx < batches.size(); ++batch_idx) {
@@ -125,9 +129,9 @@ std::vector<std::string> serializator(std::vector<Batch> &batches, const std::st
 
             ++file_counter;
             clearMap(last_offset);
-            std::string name = nextFilePath(folderPath, file_counter);
+            name = nameFile(file_counter);
+            out = startFile(nextFilePath(folderPath, name));
             filesNames.push_back(name);
-            out = startFile(name);
             file_pos = sizeof(file_magic);
         }
     }
