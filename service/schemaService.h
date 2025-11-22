@@ -6,11 +6,14 @@
 
 #include "../metastore/metastore.h"
 #include "../types.h"
+#include <nlohmann/json.hpp>
 
-map<uint64_t, string> getTables(); 
+using json = nlohmann::json;
 
-std::optional<TableInfo> getTableInfo(uint64_t id);
+std::map<uint64_t, std::string> getTables(); 
+
+std::optional<TableInfo> getTableInfoByID(uint64_t id);
 
 bool deleteTable(uint64_t id); 
 
-CreateTableResult createTable(const std::string& json_info);
+CreateTableResult createTable(const json& json_info);

@@ -1,0 +1,120 @@
+#include "executionService.h"
+#include <csv.hpp>
+namespace fs = std::filesystem;
+
+Batch make_empty_batch(size_t numIntCols, size_t numStrCols) {
+    Batch b;
+    b.intColumns.resize(numIntCols);
+    b.stringColumns.resize(numStrCols);
+    b.num_rows = 0;
+    return b;
+}
+
+std::string get_path(const TableInfo &info){
+    if (!info.location.empty()) {
+        return info.location;
+    }
+
+    fs::path tableDir = fs::path(base) / info.name;
+    if (!fs::exists(tableDir)) {
+        fs::create_directories(tableDir);
+    }
+    fs::path tableDirFile = fs::path(tableDir) / info.name;
+    return tableDirFile.string();
+}
+
+QueryCreatedResponse copyCSV(CopyQuery q){
+    std::optional<TableInfo> infoOpt = getTableInfo(q.destinationTableName);
+    if (!infoOpt) {
+        throw std::runtime_error("Table not found: " + q.destinationTableName);
+    }
+    TableInfo info = *infoOpt;
+    std::vector<std::string> colTypes;
+    std::string path = get_path(info);
+    std::vector<std::string> fileNames;
+
+    colTypes.reserve(info.info.size());
+
+    for (const auto& col : info.info) {
+        colTypes.push_back(col.second);
+    }
+
+    size_t intCount = 0;
+    size_t strCount = 0;
+
+    for (const auto& t : colTypes) {
+        if (t == "INT64")
+            intCount++;
+        else if (t == "VARCHAR")
+            strCount++;
+        else
+            throw std::runtime_error("Unsupported column type: " + t);
+    }
+
+    csv::CSVFormat format;
+    format.delimiter(',').quote('"');
+    if (q.doesCsvContainHeader)
+        format.header_row(0);
+    else
+        format.no_header();
+
+
+    std::vector<Batch> batches;
+    Batch batch = make_empty_batch(intCount, strCount);
+
+    csv::CSVReader reader(q.path, format);
+    
+    uint64_t intIdx = 0;
+    uint64_t strIdx = 0;
+
+    for (csv::CSVRow& row : reader) {
+
+        if (row.size() != colTypes.size()) {
+            throw std::runtime_error("Expected number of columns are different that expected");
+        }
+
+        size_t intIdx = 0, strIdx = 0;
+
+        for (size_t i = 0; i < row.size(); i++) {
+            const auto& colType = colTypes[i];
+            cout<<colType<<"\n";
+            cout<<row[i]<<"\n";
+            cout.flush();
+            if (colType == "INT64") {
+                batch.intColumns[intIdx].column.push_back(row[i].get<std::int64_t>());
+                intIdx++;
+            } 
+            else if (colType == "VARCHAR") {
+                batch.stringColumns[strIdx].column.push_back(row[i].get<std::string>());
+                strIdx++;
+            } 
+            else {
+                throw std::runtime_error("Unsupported type: " + colType);
+            }
+        }
+
+        batch.num_rows++;
+
+        if (batch.num_rows == BATCH_SIZE) {
+            batches.push_back(std::move(batch));
+            batch = make_empty_batch(intCount, strCount);
+            if (batches.size() > BATCH_NUMBER){
+                            std::vector<std::string> tmp = std::move(serializator(batches, path, PART_LIMIT));
+                fileNames.insert(fileNames.end(), tmp.begin(), tmp.end());
+            }
+            batches.clear();
+        }
+    }
+    if (batch.num_rows > 0) {
+        batches.push_back(std::move(batch));
+    std::vector<std::string> tmp = std::move(serializator(batches, path, PART_LIMIT));
+    fileNames.insert(fileNames.end(), tmp.begin(), tmp.end());
+    }
+
+    addLocationAndFiles(info.id, path, fileNames);
+
+    QueryCreatedResponse empty;
+    empty.success = true;
+    return empty;
+}
+

@@ -1,10 +1,13 @@
+.PHONY: all clean batches
+
 CXX = g++
 CXXFLAGS = -std=c++20 -g \
            -I zstd/lib \
            -I zstd/lib/common \
            -I cpp-client \
            -I/usr/local/include \
-           -I restbed-old/source
+           -I restbed-old/source \
+           -I csv-parser/include
 
 LDFLAGS = -L zstd/lib -lssl -lcrypto -lboost_system -lpthread -lzstd
 
@@ -20,10 +23,12 @@ SRC = main.cpp \
       statistics/statistics.cpp \
       service/utils.cpp \
       service/schemaService.cpp \
-      metastore/metastore.cpp
+      service/executionService.cpp \
+      metastore/metastore.cpp 
 
 SRC += $(wildcard restbed-old/source/corvusoft/restbed/*.cpp)
 SRC += $(wildcard restbed-old/source/corvusoft/restbed/detail/*.cpp)
+SRC += $(wildcard csv-parser/include/internal/*.cpp)
 
 OBJ = $(SRC:.cpp=.o)
 
@@ -44,5 +49,3 @@ zstd/lib/libzstd.a:
 clean:
 	rm -f $(OBJ) $(TARGET)
 	cd zstd && $(MAKE) clean
-
-.PHONY: all clean batches

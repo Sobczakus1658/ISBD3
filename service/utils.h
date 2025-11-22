@@ -16,6 +16,7 @@
 #include "corvusoft/restbed/logger.hpp"
 
 #include "schemaService.h"
+#include "executionService.h"
 
 void setUpApi();
 

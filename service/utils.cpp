@@ -1,34 +1,11 @@
-// #include <iostream>
-// #include <fstream>
-// #include <unordered_map>
-// #include <memory>
-// #include <string>
-// #include <vector>
-// #include <optional>
-// #include <nlohmann/json.hpp>
-
-// #include "corvusoft/restbed/settings.hpp"
-// #include "corvusoft/restbed/resource.hpp"
-// #include "corvusoft/restbed/service.hpp"
-// #include "corvusoft/restbed/request.hpp"
-// #include "corvusoft/restbed/response.hpp"
-// #include "corvusoft/restbed/session.hpp"
-// #include "corvusoft/restbed/logger.hpp"
-
-// #include "schemaService.h"
 #include "utils.h"
-// #include "exectutionService.h"
 
 using json = nlohmann::json;
 
+#include <iostream>
 using namespace std;
 using namespace restbed;
 
-void f1() { }
-void f2() { }
-void f3() { }
-void f4() { }
-void f5() { }
 void f6() { }
 
 string createJson(const map<uint64_t, string>& tables) {
@@ -43,6 +20,36 @@ string createJson(const map<uint64_t, string>& tables) {
     return json;
 }
 
+
+json queryResponseToJson(const QueryCreatedResponse &response) {
+    json j;
+    j["success"] = response.success;
+    return j;
+}
+
+QueryType recogniseQuery(const json &query) {
+    const json *def = &query;
+    if (query.is_object() && query.contains("queryDefinition"))
+        def = &query["queryDefinition"];
+
+    if (!def->is_object())
+        return QueryType::ERROR;
+
+    if (def->contains("CopyQuery") && (*def)["CopyQuery"].is_object()) {
+        const auto &cq = (*def)["CopyQuery"];
+        if (cq.contains("sourceFilepath") && cq.contains("destinationTableName") &&
+            cq["sourceFilepath"].is_string() && cq["destinationTableName"].is_string()) {
+            return QueryType::COPY;
+        }
+        return QueryType::ERROR;
+    }
+
+    if (def->contains("tableName") && (*def)["tableName"].is_string())
+        return QueryType::SELECT;
+
+    return QueryType::ERROR;
+}
+
 void getTablesHandler(const shared_ptr<Session> session) {
     map<uint64_t, string> tables = getTables();
     session->close(200, createJson(tables), { {"Content-Type", "application/json"} });
@@ -52,7 +59,7 @@ void getTableByIdHandler(const shared_ptr<Session> session) {
     const auto request = session->get_request();
     std::string tableIdStr = request->get_path_parameter("tableId");
     uint64_t tableId = std::stoull(tableIdStr);
-    std::optional<TableInfo> tableInfo = getTableInfo(tableId);
+    optional<TableInfo> tableInfo = getTableInfoByID(tableId);
 
     if (!tableInfo.has_value()) {
         session->close(404, "{\"error\":\"Table not found\"}\n", {{"Content-Type", "application/json"}});
@@ -72,7 +79,6 @@ void getTableByIdHandler(const shared_ptr<Session> session) {
     session->close(200, response_json.dump(),{{"Content-Type", "application/json"}});
 }
 
-
 void createTableHandler(const shared_ptr<Session> session) {
     int content_length = session->get_request()->get_header("Content-Length", 0);
 
@@ -80,9 +86,19 @@ void createTableHandler(const shared_ptr<Session> session) {
         [](const std::shared_ptr<restbed::Session> session, const restbed::Bytes &body) {
 
             std::string json_body(body.begin(), body.end());
-            json parsed = json::parse(json_body);
+            json parsed;
+            try {
+                parsed = json::parse(json_body);
+            } catch (const std::exception &e) {
+                json err;
+                err["error"] = std::string("Invalid JSON: ") + e.what();
+                err["raw"] = json_body;
+                session->close(400, err.dump(), {{"Content-Type","application/json"}});
+                return;
+            }
 
-            CreateTableResult result = createTable(json_body);
+
+            CreateTableResult result = createTable(parsed);
 
             json response_json;
             if (result.error == CREATE_TABLE_ERROR::NONE) {
@@ -97,16 +113,70 @@ void createTableHandler(const shared_ptr<Session> session) {
 }
 
 void deleteTableHandler(const shared_ptr<Session> session) {
-    f4();
-    session->close(200, "", {});
+    const auto request = session->get_request();
+    std::string tableIdStr = request->get_path_parameter("tableId");
+    uint64_t tableId = std::stoull(tableIdStr);
+    bool result = deleteTable(tableId);
+    
+    if (!result) {
+        session->close(404, "{\"error during deleting Table\"}\n", {{"Content-Type", "application/json"}});
+        return;
+    }
+    session->close(200, "true",{{"Content-Type", "application/json"}});
+
 }
-
-
 
 void submitQueryHandler(const shared_ptr<Session> session)
 {
-    f5();
-    session->close(200, "\"new_query_id\"", { {"Content-Type", "application/json"} });
+    int content_length = session->get_request()->get_header("Content-Length", 0);
+
+    session->fetch(content_length,
+        [](const std::shared_ptr<restbed::Session> session, const restbed::Bytes &body) {
+            std::string json_body(body.begin(), body.end());
+            json json_message = json::parse(json_body);
+            QueryType type = recogniseQuery(json_message);
+            switch(type) {
+                case QueryType::COPY: {
+                    if (!json_message.contains("queryDefinition") || !json_message["queryDefinition"].is_object()) {
+                        throw std::runtime_error("Missing queryDefinition");
+                    }
+
+                    const auto &def = json_message["queryDefinition"];
+
+                    if (!def.contains("CopyQuery") || !def["CopyQuery"].is_object()) {
+                        throw std::runtime_error("Missing CopyQuery definition");
+                    }
+
+                    const auto &cq = def["CopyQuery"];
+                    CopyQuery copyQuery;
+
+                    copyQuery.destinationTableName = cq["destinationTableName"].get<std::string>();
+                    copyQuery.path = cq["sourceFilepath"].get<std::string>();
+                    copyQuery.doesCsvContainHeader = cq["doesCsvContainHeader"].get<bool>();
+
+                    if (cq.contains("destinationColumns") && cq["destinationColumns"].is_array()) {
+                        std::vector<std::string> columns;
+                        for (const auto &c : cq["destinationColumns"]) {
+                            if (c.is_string()) columns.push_back(c.get<std::string>());
+                        }
+                        copyQuery.destinationColumns = columns;
+                    }
+
+                    QueryCreatedResponse response = copyCSV(copyQuery);
+                    json jsonResponse =  queryResponseToJson(response);
+                    int status = response.success ? 200 : 400;
+                    session->close(status, jsonResponse.dump(), { {"Content-Type", "application/json"} });
+                    return;
+                } 
+                case QueryType:: SELECT: {
+                }
+                default: {
+                    session->close(400, "Invalid QueryType", { {"Content-Type", "application/json"} });
+                }
+
+            }
+        }
+    );
 }
 
 void getQueryResultHandler(const shared_ptr<Session> session)

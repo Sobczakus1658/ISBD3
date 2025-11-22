@@ -10,11 +10,12 @@
 #include "../serialization/serializator.h"
 #include "../serialization/deserializator.h"
 #include "../statistics/statistics.h"
+#include "../types.h"
 
-static constexpr uint64_t PART_LIMIT = 3500ULL * 1024ULL * 1024ULL;
-static constexpr uint64_t SHORTER_LIMIT = 3500ULL * 1024ULL;
+// static constexpr uint64_t PART_LIMIT = 3500ULL * 1024ULL * 1024ULL;
+// static constexpr uint64_t SHORTER_LIMIT = 3500ULL * 1024ULL;
 namespace fs = filesystem;
-static const string base =  fs::current_path() / "batches/";
+using namespace std;
 static const string base_example =  fs::current_path() / "example/";
 
 vector<Batch> simpleBatch(){

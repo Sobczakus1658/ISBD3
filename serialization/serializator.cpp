@@ -7,14 +7,14 @@
 #include <cstdio>
 #include <algorithm>
 
-string nextFilePath(const string& folderPath, uint32_t counter){
+std::string nextFilePath(const std::string& folderPath, uint32_t counter){
     char buf[512];
     snprintf(buf, sizeof(buf), "%s.part%03u", folderPath.c_str(), counter);
-    return string(buf);
+    return std::string(buf);
 }
 
-unordered_map<string, ColumnInfo> initMap(Batch batch) {
-    unordered_map<string, ColumnInfo> m;
+std::unordered_map<std::string, ColumnInfo> initMap(Batch batch) {
+    std::unordered_map<std::string, ColumnInfo> m;
     for (const auto &ic : batch.intColumns) {
         m.emplace(ic.name, ColumnInfo{0, INTEGER});
     }
@@ -24,21 +24,21 @@ unordered_map<string, ColumnInfo> initMap(Batch batch) {
     return m;
 }
 
-ofstream startFile(const string& filepath) {
-    ofstream out(filepath, ios::binary);
+static std::ofstream startFile(const std::string& filepath) {
+    std::ofstream out(filepath, std::ios::binary);
     if(!out) {
-        cerr << "serializator: cannot open file " << filepath << "\n";
-        return ofstream();
+        std::cerr << "serializator: cannot open file " << filepath << "\n";
+        return std::ofstream();
     }
     out.write((const char*)(&file_magic), sizeof(file_magic));
     return out;
 }
 
-void saveMap(const unordered_map<string, ColumnInfo> &map, ofstream &out) {
+static void saveMap(const std::unordered_map<std::string, ColumnInfo> &map, std::ofstream &out) {
     uint64_t index_start = static_cast<uint64_t>(out.tellp());
 
     for (const auto &kv : map) {
-        const string &name = kv.first;
+        const std::string &name = kv.first;
         uint16_t name_len = static_cast<uint16_t>(name.size());
         uint8_t kind = kv.second.second; 
         uint64_t offset = kv.second.first;
@@ -54,20 +54,23 @@ void saveMap(const unordered_map<string, ColumnInfo> &map, ofstream &out) {
     out.write((const char*) (&index_start), sizeof(index_start));
 }
 
-void clearMap(unordered_map<string, ColumnInfo> &map) {
+static void clearMap(std::unordered_map<std::string, ColumnInfo> &map) {
     for (auto &kv : map) {
         kv.second.first = 0;
     }
 }
 
-void serializator(vector<Batch> &batches, const string& folderPath, uint64_t PART_LIMIT) {
-    unordered_map<string, ColumnInfo> last_offset;
+std::vector<std::string> serializator(std::vector<Batch> &batches, const std::string& folderPath, uint64_t PART_LIMIT) {
+    static uint32_t file_counter = 0;
+    std::vector<std::string> filesNames;
+    std::unordered_map<std::string, ColumnInfo> last_offset;
     if (!batches.empty()) last_offset = initMap(batches[0]);
     else last_offset = initMap(Batch());
 
-    uint32_t file_counter = 0;
-    ofstream out = startFile(nextFilePath(folderPath, file_counter));
-    if (!out) return;
+    std::string name = nextFilePath(folderPath, file_counter);
+    filesNames.push_back(name);
+    std::ofstream out = startFile(name);
+    if (!out) return filesNames;
 
     uint64_t file_pos = sizeof(file_magic);
     for (uint32_t batch_idx = 0; batch_idx < batches.size(); ++batch_idx) {
@@ -117,14 +120,14 @@ void serializator(vector<Batch> &batches, const string& folderPath, uint64_t PAR
         out.flush();
         uint64_t cur_size = file_pos;
         if (cur_size > PART_LIMIT) {
-            
             saveMap(last_offset, out);
             out.close();
 
             ++file_counter;
             clearMap(last_offset);
-            out = startFile(nextFilePath(folderPath, file_counter));
-            if (!out) return;
+            std::string name = nextFilePath(folderPath, file_counter);
+            filesNames.push_back(name);
+            out = startFile(name);
             file_pos = sizeof(file_magic);
         }
     }
@@ -132,4 +135,5 @@ void serializator(vector<Batch> &batches, const string& folderPath, uint64_t PAR
         saveMap(last_offset, out);
         out.close();
     }
+    return filesNames;
 }
