@@ -1,6 +1,5 @@
 FROM gcc:12.2
 
-# Instalacja zależności systemowych
 RUN apt-get update && apt-get install -y \
     cmake \
     libssl-dev \
@@ -10,13 +9,10 @@ RUN apt-get update && apt-get install -y \
     zlib1g-dev \
     build-essential
 
-# Ustaw katalog roboczy
 WORKDIR /app
 
-# Kopiujemy cały projekt, w tym restbed-old
 COPY . /app/
 
-# Kompilacja wszystkich źródeł jak w Makefile
 RUN g++ -std=c++20 \
         -I. \
         -I zstd/lib \
@@ -32,5 +28,4 @@ RUN g++ -std=c++20 \
         -L zstd/lib \
         -lssl -lcrypto -lboost_system -lpthread -lzstd
 
-# Uruchomienie programu w kontenerze
 CMD ["./controler"]

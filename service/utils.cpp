@@ -43,9 +43,14 @@ QueryType recogniseQuery(const json &query) {
         }
         return QueryType::ERROR;
     }
-
-    if (def->contains("tableName") && (*def)["tableName"].is_string())
-        return QueryType::SELECT;
+    
+    if (def->contains("SelectQuery") && (*def)["SelectQuery"].is_object()) {
+        const auto &cq = (*def)["SelectQuery"];
+        if (cq.contains("tableName") && cq["tableName"].is_string()) {
+            return QueryType::SELECT;
+        }
+        return QueryType::ERROR;
+    }
 
     return QueryType::ERROR;
 }
@@ -135,18 +140,11 @@ void submitQueryHandler(const shared_ptr<Session> session)
             std::string json_body(body.begin(), body.end());
             json json_message = json::parse(json_body);
             QueryType type = recogniseQuery(json_message);
+            const auto &def = json_message["queryDefinition"];
+            cout<<"-Raz" << "\n";
+            cout.flush();
             switch(type) {
                 case QueryType::COPY: {
-                    if (!json_message.contains("queryDefinition") || !json_message["queryDefinition"].is_object()) {
-                        throw std::runtime_error("Missing queryDefinition");
-                    }
-
-                    const auto &def = json_message["queryDefinition"];
-
-                    if (!def.contains("CopyQuery") || !def["CopyQuery"].is_object()) {
-                        throw std::runtime_error("Missing CopyQuery definition");
-                    }
-
                     const auto &cq = def["CopyQuery"];
                     CopyQuery copyQuery;
 
@@ -169,6 +167,15 @@ void submitQueryHandler(const shared_ptr<Session> session)
                     return;
                 } 
                 case QueryType:: SELECT: {
+                    cout<<"Zero" << "\n";
+                    cout.flush();
+                    const auto &cq = def["SelectQuery"];
+                    string queryId = selectTable(cq["tableName"]);
+
+                    nlohmann::json jsonResponse;
+                    jsonResponse["queryId"] = queryId;
+
+                    session->close(200, jsonResponse.dump(), { {"Content-Type", "application/json"} });
                 }
                 default: {
                     session->close(400, "Invalid QueryType", { {"Content-Type", "application/json"} });

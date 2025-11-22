@@ -10,3 +10,5 @@
 
 QueryCreatedResponse copyCSV(CopyQuery  query);
 
+std::string selectTable(std::string name);
+

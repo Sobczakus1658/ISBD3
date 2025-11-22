@@ -1,5 +1,10 @@
 #include "executionService.h"
+#include "../queries/queries.h"
+#include "../serialization/deserializator.h"
 #include <csv.hpp>
+#include <random>
+
+
 namespace fs = std::filesystem;
 
 Batch make_empty_batch(size_t numIntCols, size_t numStrCols) {
@@ -77,9 +82,6 @@ QueryCreatedResponse copyCSV(CopyQuery q){
 
         for (size_t i = 0; i < row.size(); i++) {
             const auto& colType = colTypes[i];
-            cout<<colType<<"\n";
-            cout<<row[i]<<"\n";
-            cout.flush();
             if (colType == "INT64") {
                 batch.intColumns[intIdx].column.push_back(row[i].get<std::int64_t>());
                 intIdx++;
@@ -107,8 +109,8 @@ QueryCreatedResponse copyCSV(CopyQuery q){
     }
     if (batch.num_rows > 0) {
         batches.push_back(std::move(batch));
-    std::vector<std::string> tmp = std::move(serializator(batches, path, PART_LIMIT));
-    fileNames.insert(fileNames.end(), tmp.begin(), tmp.end());
+        std::vector<std::string> tmp = std::move(serializator(batches, path, PART_LIMIT));
+        fileNames.insert(fileNames.end(), tmp.begin(), tmp.end());
     }
 
     addLocationAndFiles(info.id, path, fileNames);
@@ -118,3 +120,27 @@ QueryCreatedResponse copyCSV(CopyQuery q){
     return empty;
 }
 
+std::string selectTable(std::string name){
+    std::optional<TableInfo> infoOpt = getTableInfo(name);
+    if (!infoOpt) {
+        throw std::runtime_error("Table not found: " + name);
+    }
+    TableInfo info = *infoOpt;
+
+    std::random_device rd;
+    std::mt19937_64 gen(rd());
+    uint64_t id = gen();
+    string queryId = std::to_string(id);
+    initQuery(queryId);
+    for (const auto &f : info.files) {
+        cout<<"Trzy" << "\n";
+        cout.flush();
+        std::string path = info.location;
+        if (!path.empty() && path.back() != '/' && path.back() != '\\') path.push_back('/');
+        path += f;
+
+        std::vector<Batch> batches = move(deserializator(path));
+        modifyQuery(queryId, batches);
+    }
+    return queryId;
+}

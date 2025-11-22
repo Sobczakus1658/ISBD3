@@ -1,4 +1,3 @@
-#include <vector>
 #pragma once
 
 #include <vector>
@@ -6,6 +5,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <filesystem>
+#include <variant>
 
 using namespace std;
 inline constexpr size_t BATCH_SIZE = 8192;
@@ -28,7 +28,15 @@ struct CreateTableResult {
     std::string tableId;
     CREATE_TABLE_ERROR error;
 };
-// avoid pulling entire std namespace into global scope in headers
+
+using Column = std::variant<std::vector<int64_t>, std::vector<std::string>>;
+
+struct QueryResultBatch {
+    int rowCount;
+    std::vector<Column> columns;
+};
+
+using QueryResult = std::vector<QueryResultBatch>;
 
 using ColumnInfo = pair<uint64_t, uint8_t>;
 using ColumnInfoShow = pair<string, string>;

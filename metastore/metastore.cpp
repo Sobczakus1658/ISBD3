@@ -49,6 +49,17 @@ std::optional<TableInfo> getTableInfo(const std::string &name) {
                     tableinfo.info.emplace_back(col_name, col_type);
                 }
             }
+            if (obj.contains("location") && obj["location"].is_string()) {
+                tableinfo.location = obj["location"].get<std::string>();
+            } else {
+                tableinfo.location = "";
+            }
+            tableinfo.files.clear();
+            if (obj.contains("files") && obj["files"].is_array()) {
+                for (const auto &f : obj["files"]) {
+                    if (f.is_string()) tableinfo.files.push_back(f.get<std::string>());
+                }
+            }
             return tableinfo;
         }
     }
@@ -110,9 +121,7 @@ bool deleteTableMetastore(uint64_t id) {
 }
 
 CreateTableResult createTableMetastore(const json& json_info) {
-    cout<<"To dostałem \n";
-    cout<<json_info.dump();
-    cout.flush();
+
     auto it = json_info.begin();
     std::string table_name = it.key();
     const json &obj = it.value();

@@ -24,7 +24,8 @@ SRC = main.cpp \
       service/utils.cpp \
       service/schemaService.cpp \
       service/executionService.cpp \
-      metastore/metastore.cpp 
+      metastore/metastore.cpp \
+      queries/queries.cpp \
 
 SRC += $(wildcard restbed-old/source/corvusoft/restbed/*.cpp)
 SRC += $(wildcard restbed-old/source/corvusoft/restbed/detail/*.cpp)
