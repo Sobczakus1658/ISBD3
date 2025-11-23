@@ -1,5 +1,6 @@
 #include "executionService.h"
 #include "../queries/queries.h"
+#include "../results/results.h"
 #include "../serialization/deserializator.h"
 #include <csv.hpp>
 #include <random>
@@ -28,15 +29,16 @@ std::string get_path(const TableInfo &info){
 }
 
 QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
+    QueryCreatedResponse response;
     std::optional<TableInfo> infoOpt = getTableInfoByName(q.destinationTableName);
     if (!infoOpt) {
-        throw std::runtime_error("Table not found: " + q.destinationTableName);
+        response.status = CSV_TABLE_ERROR::TABLE_NOT_FOUND;
+        return response;
     }
     TableInfo info = *infoOpt;
     std::vector<std::string> colTypes;
     std::string path = get_path(info);
     std::vector<std::string> fileNames;
-    QueryCreatedResponse response;
 
     colTypes.reserve(info.info.size());
 
@@ -76,17 +78,53 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
     uint64_t strIdx = 0;
     bool send = false;
 
+    std::vector<int> csvToTable; 
+
+    if (!q.destinationColumns.empty()) {
+
+        std::unordered_map<std::string, int> tableNameToIndex;
+        for (size_t i = 0; i < info.info.size(); i++) {
+            tableNameToIndex[info.info[i].first] = i;
+        }
+
+        for (const auto &colName : q.destinationColumns) {
+            if (tableNameToIndex.find(colName) == tableNameToIndex.end()) {
+                response.status = CSV_TABLE_ERROR::INVALID_DESTINATION_COLUMN;
+                return response;
+            }
+            csvToTable.push_back(tableNameToIndex[colName]);
+        }
+
+    } else {
+        for (size_t i = 0; i < colTypes.size(); i++) {
+            csvToTable.push_back(i);
+        }
+    }
+
     for (csv::CSVRow& row : reader) {
 
-        if (row.size() != colTypes.size()) {
+        // if (row.size() != colTypes.size()) {
+        //     response.status = CSV_TABLE_ERROR::INVALID_COLUMN_NUMBER;
+        //     return response;
+        // }
+        if (!q.destinationColumns.empty()) {
+            if (row.size() != q.destinationColumns.size()) {
+                response.status = CSV_TABLE_ERROR::INVALID_COLUMN_NUMBER;
+                return response;
+            }
+        } else {
+            if (row.size() != colTypes.size()) {
             response.status = CSV_TABLE_ERROR::INVALID_COLUMN_NUMBER;
             return response;
+            }
         }
 
         size_t intIdx = 0, strIdx = 0;
 
         for (size_t i = 0; i < row.size(); i++) {
-            const auto& colType = colTypes[i];
+            // const auto& colType = colTypes[i];
+            int tbl_i = csvToTable[i];
+            const auto &colType = colTypes[tbl_i];
             try {
                 if (colType == "INT64") {
                     auto val = row[i].get<std::int64_t>();
@@ -142,13 +180,14 @@ SELECT_TABLE_ERROR selectTable(SelectQuery select_query, string queryId){
     }
     TableInfo info = *infoOpt;
     changeStatus(queryId, QueryStatus::RUNNING);
+    initResult(queryId);
     for (const auto &f : info.files) {
         std::string path = info.location;
         if (!path.empty() && path.back() != '/' && path.back() != '\\') path.push_back('/');
         path += f;
 
         std::vector<Batch> batches = move(deserializator(path));
-        modifyQuery(queryId, batches);
+        modifyResult(queryId, batches);
     }
     return SELECT_TABLE_ERROR::NONE;
 }

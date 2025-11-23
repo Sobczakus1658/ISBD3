@@ -76,18 +76,17 @@ json prepareQueryResponse(const QueryResponse &response) {
     json_info["status"] = statusToString(response.status);
     json_info["isResultAvailable"] = response.isResultAvailable;
 
-    bool hasCopy = !response.copyQuery.destinationTableName.empty() || !response.copyQuery.path.empty();
-    if (hasCopy) {
+    if (auto pc = std::get_if<CopyQuery>(&response.query)) {
         json copy_query = json::object();
-        copy_query["sourceFilepath"] = response.copyQuery.path;
-        copy_query["destinationTableName"] = response.copyQuery.destinationTableName;
-        copy_query["doesCsvContainHeader"] = response.copyQuery.doesCsvContainHeader;
+        copy_query["sourceFilepath"] = pc->path;
+        copy_query["destinationTableName"] = pc->destinationTableName;
+        copy_query["doesCsvContainHeader"] = pc->doesCsvContainHeader;
         copy_query["destinationColumns"] = json::array();
-        for (const auto &c : response.copyQuery.destinationColumns) copy_query["destinationColumns"].push_back(c);
+        for (const auto &c : pc->destinationColumns) copy_query["destinationColumns"].push_back(c);
         json_info["CopyQuery"] = std::move(copy_query);
-    } else {
+    } else if (auto ps = std::get_if<SelectQuery>(&response.query)) {
         json select_query = json::object();
-        select_query["tableName"] = response.selectQuery.tableName;
+        select_query["tableName"] = ps->tableName;
         json_info["SelectQuery"] = std::move(select_query);
     }
 
@@ -132,6 +131,36 @@ json createErrorResponse(const string message) {
     j["problems"] = json::array();
     j["problems"].push_back({ {"error", message} });
     return j;
+}
+
+static bool handleCsvError(const std::shared_ptr<Session>& session, const std::string &query_id, CSV_TABLE_ERROR code) {
+    if (code == CSV_TABLE_ERROR::NONE) return false;
+    changeStatus(query_id, QueryStatus::FAILED);
+    std::string msg;
+    switch (code) {
+        case CSV_TABLE_ERROR::FILE_NOT_FOUND:
+            msg = "The file at this path does not exist";
+            break;
+        case CSV_TABLE_ERROR::INVALID_COLUMN_NUMBER:
+            msg = "Actual and expected number of columns are different";
+            break;
+        case CSV_TABLE_ERROR::INVALID_TYPE:
+            msg = "Invalid Column Type";
+            break;
+        case CSV_TABLE_ERROR::TABLE_NOT_FOUND:
+            msg = "Table not found";
+            break;
+        case CSV_TABLE_ERROR::INVALID_DESTINATION_COLUMN:
+            msg = "Invalid destination column";
+            break;
+        default:
+            msg = "Unexpected error";
+            break;
+    }
+    json error = createErrorResponse(msg);
+    addError(query_id, error);
+    session->close(400, error.dump(), { {"Content-Type", "application/json"} });
+    return true;
 }
 
 QueryType recogniseQuery(const json &query) {
@@ -267,41 +296,22 @@ void submitQueryHandler(const shared_ptr<Session> session)
                         copyQuery.destinationColumns = columns;
                     }
                     
-                    addCopyBody(query_id, copyQuery);
+                    addQueryDefinition(query_id, copyQuery);
                     QueryCreatedResponse response = copyCSV(copyQuery, query_id);
 
-                    switch (response.status){
-                    case CSV_TABLE_ERROR::NONE :
+                    if (response.status == CSV_TABLE_ERROR::NONE) {
                         changeStatus(query_id, QueryStatus::COMPLETED);
                         session->close(200, jsonResponse.dump(), { {"Content-Type", "application/json"} });
-                        break;
-
-                    case CSV_TABLE_ERROR::FILE_NOT_FOUND :
-                        changeStatus(query_id, QueryStatus::FAILED);
-                        session->close(400, createErrorResponse("The file at this path does not exist").dump(), { {"Content-Type", "application/json"} });
-                        break;
-
-                    case CSV_TABLE_ERROR::INVALID_COLUMN_NUMBER :
-                        changeStatus(query_id, QueryStatus::FAILED);
-                        session->close(400, createErrorResponse("Actual and expected number of columns are different").dump(), { {"Content-Type", "application/json"} });
-                        break;
-
-                    case CSV_TABLE_ERROR::INVALID_TYPE :
-                        changeStatus(query_id, QueryStatus::FAILED);
-                        session->close(400, createErrorResponse("Invalid Coumn Type").dump(), { {"Content-Type", "application/json"} });
-                        break;
-
-                    default:
-                        changeStatus(query_id, QueryStatus::FAILED);
-                        session->close(400, createErrorResponse("Unexpected error").dump(), { {"Content-Type", "application/json"} });
-                        break;
+                    } else {
+                        handleCsvError(session, query_id, response.status);
                     }
+                    break;
                 } 
-                case QueryType:: SELECT: {
+                case QueryType::SELECT: {
                     const auto &select_query = def["SelectQuery"];
                     SelectQuery sq;
                     sq.tableName = select_query["tableName"];
-                    addSelectBody(query_id, sq);
+                    addQueryDefinition(query_id, sq);
                     SELECT_TABLE_ERROR response = selectTable(sq, query_id);
                     if (response == SELECT_TABLE_ERROR::NONE){
                         changeStatus(query_id, QueryStatus::COMPLETED);
@@ -311,6 +321,7 @@ void submitQueryHandler(const shared_ptr<Session> session)
                     changeStatus(query_id, QueryStatus::FAILED);
                     string error = "Table " + select_query["tableName"].dump() + " does not exist" ;
                     session->close(400, createErrorResponse(error).dump(), { {"Content-Type", "application/json"} });
+                    break;
                 }
                 default: {
                     session->close(400, "Invalid QueryType", { {"Content-Type", "application/json"} });

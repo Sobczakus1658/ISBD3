@@ -83,18 +83,20 @@ struct SelectQuery {
     string tableName;
 };
 
+using QueryToJson = std::variant<SelectQuery, CopyQuery>;
+
 enum class QueryType {COPY, SELECT, ERROR};
 
-enum class CSV_TABLE_ERROR{NONE, INVALID_TYPE, FILE_NOT_FOUND, INVALID_COLUMN_NUMBER};
+enum class CSV_TABLE_ERROR{NONE, INVALID_TYPE, FILE_NOT_FOUND, INVALID_COLUMN_NUMBER, TABLE_NOT_FOUND, INVALID_DESTINATION_COLUMN};
 
 enum class QueryStatus{CREATED, PLANNING, RUNNING, COMPLETED, FAILED};
+
 
 struct QueryResponse {
     string queryId;
     QueryStatus status;
     bool isResultAvailable;
-    CopyQuery copyQuery;
-    SelectQuery selectQuery;
+    QueryToJson query;
 };
 
 struct QueryCreatedResponse {
