@@ -21,11 +21,12 @@ SRC = main.cpp \
       serialization/deserializator.cpp \
       validation/validator.cpp \
       statistics/statistics.cpp \
-      service/utils.cpp \
-      service/schemaService.cpp \
       service/executionService.cpp \
       metastore/metastore.cpp \
       queries/queries.cpp \
+      results/results.cpp \
+      controler.cpp \
+      errors/errors.cpp
 
 SRC += $(wildcard restbed-old/source/corvusoft/restbed/*.cpp)
 SRC += $(wildcard restbed-old/source/corvusoft/restbed/detail/*.cpp)

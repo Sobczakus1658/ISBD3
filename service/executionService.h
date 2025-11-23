@@ -10,5 +10,5 @@
 
 QueryCreatedResponse copyCSV(CopyQuery  query, string query_id);
 
-SELECT_TABLE_ERROR selectTable(std::string name);
+SELECT_TABLE_ERROR selectTable(SelectQuery select_query, string query_id);
 

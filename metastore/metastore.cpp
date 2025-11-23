@@ -28,7 +28,7 @@ json readFile(){
     return result;
 }
 
-std::optional<TableInfo> getTableInfo(const std::string &name) {
+std::optional<TableInfo> getTableInfoByName(const std::string& name) {
     json meta = readFile();
     for (auto &kv : meta["tables"].items()) {
         if (kv.key() == name){
@@ -66,7 +66,15 @@ std::optional<TableInfo> getTableInfo(const std::string &name) {
     return nullopt;
 }
 
-map<uint64_t, string> tablesFromMetastore(){
+
+std::optional<TableInfo> getTableInfo(uint64_t id) {
+    std::map<uint64_t, std::string> tables = getTables();
+    auto it = tables.find(id);
+    if (it == tables.end()) return std::nullopt;
+    return getTableInfoByName(it->second);
+}
+
+map<uint64_t, string> getTables(){
     map<uint64_t, string>  names;
     json meta = readFile();
     for (auto &kv : meta["tables"].items()) {
@@ -88,13 +96,8 @@ void removeFiles(const std::string &Path, const std::vector<std::string> &file_n
     }
 }
 
-std::optional<TableInfo> getTableInfoMetastore(uint64_t id){
-    std::map<uint64_t, std::string> map = tablesFromMetastore();
-    return getTableInfo(map[id]);
-}
-
-bool deleteTableMetastore(uint64_t id) {
-    map<uint64_t, string> tables = tablesFromMetastore();
+bool deleteTable(uint64_t id) {
+    map<uint64_t, string> tables = getTables();
     auto it = tables.find(id);
     if (it == tables.end()) return false;
     const std::string name = it->second;
@@ -120,7 +123,7 @@ bool deleteTableMetastore(uint64_t id) {
     return true;
 }
 
-CreateTableResult createTableMetastore(const json& json_info) {
+CreateTableResult createTable(const json& json_info) {
 
     auto it = json_info.begin();
     std::string table_name = it.key();
@@ -166,7 +169,7 @@ CreateTableResult createTableMetastore(const json& json_info) {
 
 void addLocationAndFiles(uint64_t id, const std::string &location, const std::vector<std::string> &files) {
     json data = readFile();
-    std::map<uint64_t, std::string> tables = tablesFromMetastore();
+    std::map<uint64_t, std::string> tables = getTables();
     auto it = tables.find(id);
     if (it == tables.end()) return;
     const std::string name = it->second;

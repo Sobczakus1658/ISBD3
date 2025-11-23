@@ -20,14 +20,14 @@ struct TableInfo {
     std::vector<std::string> files;
 };
 
-std::map<uint64_t, std::string> tablesFromMetastore(); 
+std::map<uint64_t, std::string> getTables(); 
 
-std::optional<TableInfo> getTableInfoMetastore(uint64_t id);
+std::optional<TableInfo> getTableInfo(uint64_t id);
 
-std::optional<TableInfo> getTableInfo(const std::string& name); 
+std::optional<TableInfo> getTableInfoByName(const std::string& name); 
 
-bool deleteTableMetastore(uint64_t id); 
+bool deleteTable(uint64_t id); 
 
-CreateTableResult createTableMetastore(const json& json_info);
+CreateTableResult createTable(const json& json_info);
 
 void addLocationAndFiles(uint64_t id, const std::string& location, const std::vector<std::string>& files); 

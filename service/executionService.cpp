@@ -28,7 +28,7 @@ std::string get_path(const TableInfo &info){
 }
 
 QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
-    std::optional<TableInfo> infoOpt = getTableInfo(q.destinationTableName);
+    std::optional<TableInfo> infoOpt = getTableInfoByName(q.destinationTableName);
     if (!infoOpt) {
         throw std::runtime_error("Table not found: " + q.destinationTableName);
     }
@@ -135,10 +135,10 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
     return response;
 }
 
-SELECT_TABLE_ERROR selectTable(std::string name, string queryId){
-    std::optional<TableInfo> infoOpt = getTableInfo(name);
+SELECT_TABLE_ERROR selectTable(SelectQuery select_query, string queryId){
+    std::optional<TableInfo> infoOpt = getTableInfoByName(select_query.tableName);
     if (!infoOpt) {
-        throw std::runtime_error("Table not found: " + name);
+        return SELECT_TABLE_ERROR::TABLE_NOT_EXISTS;
     }
     TableInfo info = *infoOpt;
     changeStatus(queryId, QueryStatus::RUNNING);
@@ -150,5 +150,6 @@ SELECT_TABLE_ERROR selectTable(std::string name, string queryId){
         std::vector<Batch> batches = move(deserializator(path));
         modifyQuery(queryId, batches);
     }
+    return SELECT_TABLE_ERROR::NONE;
 }
 

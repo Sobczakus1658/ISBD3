@@ -183,5 +183,14 @@ nlohmann::json getQueries(){
     return out;
 }
 void changeStatus(std::string id, QueryStatus status) {
+    // isResultAvailable to trzeba ustawiać też 
+    // i wtedy musisz zapisać też do errors albo do results
+}
 
+void addCopyBody(std::string id, CopyQuery copyQuery){
+
+}
+
+void addSelectBody(std::string id, SelectQuery selectQuery){
+    
 }

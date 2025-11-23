@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <variant>
+#include <optional>
 
 using namespace std;
 inline constexpr size_t BATCH_SIZE = 8192;
@@ -42,8 +43,13 @@ struct QueryResult {
     std::vector<Column> columns;
 };
 
+struct Problem {
+    std::string error;
+    std::optional<std::string> context;
+};
+
 struct QueryError {
-    std::vector<std::string, std::string> errors;
+    std::vector<Problem> problems;
 };
 
 
@@ -72,6 +78,7 @@ struct CopyQuery {
     vector<string> destinationColumns;
     bool doesCsvContainHeader;
 };
+
 struct SelectQuery {
     string tableName;
 };
