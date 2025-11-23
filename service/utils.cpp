@@ -3,6 +3,7 @@
 #include "../queries/queries.h"
 #include "../results/results.h"
 #include "../errors/errors.h"
+#include <random> 
 
 using json = nlohmann::json;
 
@@ -87,7 +88,9 @@ json prepareQueryResultResponse(const QueryResult& response) {
 json prepareQueryErrorResponse( const QueryError& error) {
 
 }
+json createErrorResponse(const string message) {
 
+}
 QueryType recogniseQuery(const json &query) {
     const json *def = &query;
     if (query.is_object() && query.contains("queryDefinition"))
@@ -196,6 +199,14 @@ void submitQueryHandler(const shared_ptr<Session> session)
             json json_message = json::parse(json_body);
             QueryType type = recogniseQuery(json_message);
             const auto &def = json_message["queryDefinition"];
+            std::random_device rd;
+            std::mt19937_64 gen(rd());
+            uint64_t id = gen();
+            string query_id = std::to_string(id);
+            initQuery(query_id);
+            json jsonResponse;
+            jsonResponse["queryId"] = query_id;
+            changeStatus(query_id, QueryStatus::PLANNING);
             switch(type) {
                 case QueryType::COPY: {
                     const auto &cq = def["CopyQuery"];
@@ -213,27 +224,46 @@ void submitQueryHandler(const shared_ptr<Session> session)
                         copyQuery.destinationColumns = columns;
                     }
 
-                    QueryCreatedResponse response = copyCSV(copyQuery);
-                    json jsonResponse;
+                    QueryCreatedResponse response = copyCSV(copyQuery, query_id);
+
                     switch (response.status){
                     case CSV_TABLE_ERROR::NONE :
-                        jsonResponse["queryId"] = response.queryId;
+                        changeStatus(query_id, QueryStatus::COMPLETED);
                         session->close(200, jsonResponse.dump(), { {"Content-Type", "application/json"} });
                         break;
-                    
+
+                    case CSV_TABLE_ERROR::FILE_NOT_FOUND :
+                        changeStatus(query_id, QueryStatus::FAILED);
+                        session->close(400, createErrorResponse("The file at this path does not exist").dump(), { {"Content-Type", "application/json"} });
+                        break;
+
+                    case CSV_TABLE_ERROR::INVALID_COLUMN_NUMBER :
+                        changeStatus(query_id, QueryStatus::FAILED);
+                        session->close(400, createErrorResponse("Actual and expected number of columns are different").dump(), { {"Content-Type", "application/json"} });
+                        break;
+
+                    case CSV_TABLE_ERROR::INVALID_TYPE :
+                        changeStatus(query_id, QueryStatus::FAILED);
+                        session->close(400, createErrorResponse("Invalid Coumn Type").dump(), { {"Content-Type", "application/json"} });
+                        break;
+
                     default:
-                        //TUTAJ TRZEBA DAC OBSLUGE POZOSTAŁYCH BŁĘDÓW
-                        session->close(400, jsonResponse.dump(), { {"Content-Type", "application/json"} });
+                        changeStatus(query_id, QueryStatus::FAILED);
+                        session->close(400, createErrorResponse("Unexpected error").dump(), { {"Content-Type", "application/json"} });
+                        break;
                     }
                 } 
                 case QueryType:: SELECT: {
                     const auto &select_query = def["SelectQuery"];
-                    string queryId = selectTable(select_query["tableName"]);
-
-                    nlohmann::json jsonResponse;
-                    jsonResponse["queryId"] = queryId;
-
-                    session->close(200, jsonResponse.dump(), { {"Content-Type", "application/json"} });
+                    SELECT_TABLE_ERROR response = selectTable(select_query["tableName"]);
+                    if (response == SELECT_TABLE_ERROR::NONE){
+                        changeStatus(query_id, QueryStatus::COMPLETED);
+                        session->close(200, jsonResponse.dump(), { {"Content-Type", "application/json"} });
+                        break;
+                    }
+                    changeStatus(query_id, QueryStatus::FAILED);
+                    string error = "Table " + select_query["tableName"].dump() + " does not exist" ;
+                    session->close(400, createErrorResponse(error).dump(), { {"Content-Type", "application/json"} });
                 }
                 default: {
                     session->close(400, "Invalid QueryType", { {"Content-Type", "application/json"} });

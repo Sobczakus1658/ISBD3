@@ -25,6 +25,11 @@ enum class CREATE_TABLE_ERROR {
     INVALID_COLUMN_TYPE
 };
 
+enum class SELECT_TABLE_ERROR {
+    NONE,
+    TABLE_NOT_EXISTS
+};
+
 struct CreateTableResult {
     std::string tableId;
     CREATE_TABLE_ERROR error;
@@ -73,7 +78,7 @@ struct SelectQuery {
 
 enum class QueryType {COPY, SELECT, ERROR};
 
-enum class CSV_TABLE_ERROR{NONE, ERROR};
+enum class CSV_TABLE_ERROR{NONE, INVALID_TYPE, FILE_NOT_FOUND, INVALID_COLUMN_NUMBER};
 
 enum class QueryStatus{CREATED, PLANNING, RUNNING, COMPLETED, FAILED};
 

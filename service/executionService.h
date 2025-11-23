@@ -8,7 +8,7 @@
 #include "../serialization/serializator.h"
 #include "../types.h"
 
-QueryCreatedResponse copyCSV(CopyQuery  query);
+QueryCreatedResponse copyCSV(CopyQuery  query, string query_id);
 
-std::string selectTable(std::string name);
+SELECT_TABLE_ERROR selectTable(std::string name);
 

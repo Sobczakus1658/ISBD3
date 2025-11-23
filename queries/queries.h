@@ -11,3 +11,5 @@ void modifyQuery(std::string id, vector<Batch>& batches);
 std::optional<QueryResponse> getQueryResponse(const std::string &id);
 
 nlohmann::json getQueries();
+
+void changeStatus(std::string id, QueryStatus status);

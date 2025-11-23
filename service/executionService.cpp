@@ -27,7 +27,7 @@ std::string get_path(const TableInfo &info){
     return tableDir;
 }
 
-QueryCreatedResponse copyCSV(CopyQuery q){
+QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
     std::optional<TableInfo> infoOpt = getTableInfo(q.destinationTableName);
     if (!infoOpt) {
         throw std::runtime_error("Table not found: " + q.destinationTableName);
@@ -36,6 +36,7 @@ QueryCreatedResponse copyCSV(CopyQuery q){
     std::vector<std::string> colTypes;
     std::string path = get_path(info);
     std::vector<std::string> fileNames;
+    QueryCreatedResponse response;
 
     colTypes.reserve(info.info.size());
 
@@ -49,10 +50,9 @@ QueryCreatedResponse copyCSV(CopyQuery q){
     for (const auto& t : colTypes) {
         if (t == "INT64")
             intCount++;
-        else if (t == "VARCHAR")
+        else 
             strCount++;
-        else
-            throw std::runtime_error("Unsupported column type: " + t);
+        
     }
 
     csv::CSVFormat format;
@@ -66,31 +66,40 @@ QueryCreatedResponse copyCSV(CopyQuery q){
     std::vector<Batch> batches;
     Batch batch = make_empty_batch(intCount, strCount);
 
+    if (!fs::exists(q.path)) {
+        response.status = CSV_TABLE_ERROR::FILE_NOT_FOUND;
+        return response;
+    }
     csv::CSVReader reader(q.path, format);
     
     uint64_t intIdx = 0;
     uint64_t strIdx = 0;
+    bool send = false;
 
     for (csv::CSVRow& row : reader) {
 
         if (row.size() != colTypes.size()) {
-            throw std::runtime_error("Expected number of columns are different that expected");
+            response.status = CSV_TABLE_ERROR::INVALID_COLUMN_NUMBER;
+            return response;
         }
 
         size_t intIdx = 0, strIdx = 0;
 
         for (size_t i = 0; i < row.size(); i++) {
             const auto& colType = colTypes[i];
-            if (colType == "INT64") {
-                batch.intColumns[intIdx].column.push_back(row[i].get<std::int64_t>());
-                intIdx++;
-            } 
-            else if (colType == "VARCHAR") {
-                batch.stringColumns[strIdx].column.push_back(row[i].get<std::string>());
-                strIdx++;
-            } 
-            else {
-                throw std::runtime_error("Unsupported type: " + colType);
+            try {
+                if (colType == "INT64") {
+                    auto val = row[i].get<std::int64_t>();
+                    batch.intColumns[intIdx].column.push_back(val);
+                    intIdx++;
+                } else {
+                    auto sval = row[i].get<std::string>();
+                    batch.stringColumns[strIdx].column.push_back(sval);
+                    strIdx++;
+                } 
+            } catch (const std::exception &e) {
+                response.status = CSV_TABLE_ERROR::INVALID_TYPE;
+                return response;
             }
         }
 
@@ -100,37 +109,39 @@ QueryCreatedResponse copyCSV(CopyQuery q){
             batches.push_back(std::move(batch));
             batch = make_empty_batch(intCount, strCount);
             if (batches.size() > BATCH_NUMBER){
-                            std::vector<std::string> tmp = std::move(serializator(batches, path, PART_LIMIT));
+                if (!send) {
+                    changeStatus(query_id, QueryStatus::RUNNING);
+                    send = !send;
+                }
+                std::vector<std::string> tmp = std::move(serializator(batches, path, PART_LIMIT));
                 fileNames.insert(fileNames.end(), tmp.begin(), tmp.end());
+                batches.clear();
             }
-            batches.clear();
         }
     }
     if (batch.num_rows > 0) {
         batches.push_back(std::move(batch));
+        if (!send) {
+            changeStatus(query_id, QueryStatus::RUNNING);
+            send = !send;
+        }
         std::vector<std::string> tmp = std::move(serializator(batches, path, PART_LIMIT));
         fileNames.insert(fileNames.end(), tmp.begin(), tmp.end());
     }
 
     addLocationAndFiles(info.id, path, fileNames);
 
-    QueryCreatedResponse empty;
-    empty.success = true;
-    return empty;
+    response.status = CSV_TABLE_ERROR::NONE;
+    return response;
 }
 
-std::string selectTable(std::string name){
+SELECT_TABLE_ERROR selectTable(std::string name, string queryId){
     std::optional<TableInfo> infoOpt = getTableInfo(name);
     if (!infoOpt) {
         throw std::runtime_error("Table not found: " + name);
     }
     TableInfo info = *infoOpt;
-
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
-    uint64_t id = gen();
-    string queryId = std::to_string(id);
-    initQuery(queryId);
+    changeStatus(queryId, QueryStatus::RUNNING);
     for (const auto &f : info.files) {
         std::string path = info.location;
         if (!path.empty() && path.back() != '/' && path.back() != '\\') path.push_back('/');
@@ -139,6 +150,5 @@ std::string selectTable(std::string name){
         std::vector<Batch> batches = move(deserializator(path));
         modifyQuery(queryId, batches);
     }
-    return queryId;
 }
 

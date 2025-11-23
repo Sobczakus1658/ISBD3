@@ -22,6 +22,7 @@ json readFileResult(){
 }
 
 void initQuery(std::string id){
+    // trzeba dać tutaj status created
     json results = readFileResult();
 
     json new_entry = json::object();
@@ -180,4 +181,7 @@ nlohmann::json getQueries(){
     json out = json::array();
     //TODO
     return out;
+}
+void changeStatus(std::string id, QueryStatus status) {
+
 }
