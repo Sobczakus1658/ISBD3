@@ -2,11 +2,12 @@
 #include <string>
 #include <nlohmann/json.hpp>
 #include <vector>
+#include <optional>
 
 void initQuery(std::string id);
 
 void modifyQuery(std::string id, vector<Batch>& batches);
 
-nlohmann::json getQueryResult(const std::string &id);
+std::optional<QueryResponse> getQueryResponse(const std::string &id);
 
 nlohmann::json getQueries();

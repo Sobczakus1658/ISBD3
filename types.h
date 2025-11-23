@@ -37,6 +37,11 @@ struct QueryResult {
     std::vector<Column> columns;
 };
 
+struct QueryError {
+    std::vector<std::string, std::string> errors;
+};
+
+
 using ColumnInfo = pair<uint64_t, uint8_t>;
 using ColumnInfoShow = pair<string, string>;
 
@@ -62,11 +67,25 @@ struct CopyQuery {
     vector<string> destinationColumns;
     bool doesCsvContainHeader;
 };
+struct SelectQuery {
+    string tableName;
+};
 
 enum class QueryType {COPY, SELECT, ERROR};
 
+enum class CSV_TABLE_ERROR{NONE, ERROR};
+
 enum class QueryStatus{CREATED, PLANNING, RUNNING, COMPLETED, FAILED};
 
+struct QueryResponse {
+    string queryId;
+    QueryStatus status;
+    bool isResultAvailable;
+    CopyQuery copyQuery;
+    SelectQuery selectQuery;
+};
+
 struct QueryCreatedResponse {
-    bool success;
+    string queryId;
+    CSV_TABLE_ERROR status; 
 };

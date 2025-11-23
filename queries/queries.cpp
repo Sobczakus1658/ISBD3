@@ -133,21 +133,46 @@ void modifyQuery(std::string id, vector<Batch>& batches){
     outFile.close();
 }
 
-nlohmann::json getQueryResult(const std::string &id) {
+std::optional<QueryResponse> getQueryResponse(const std::string &id) {
     json results = readFileResult();
+
     for (const auto &entry : results) {
-        if (entry.contains("id") && entry["id"].get<std::string>() == id) {
-            json out = json::object();
-            out["rowCount"] = entry.value("rowCount", 0);
-            if (entry.contains("columns") && entry["columns"].is_array()) {
-                out["columns"] = entry["columns"];
-            } else {
-                out["columns"] = json::array();
-            }
-            return out;
+        std::string entryId = entry.value("id", std::string());
+        if (entryId != id) continue;
+
+        QueryResponse resp;
+        resp.queryId = id;
+
+        if (entry.contains("status")) {
+            const json &s = entry["status"];
+            resp.status = static_cast<QueryStatus>(s.get<int>());
+        } else {
+            resp.status = QueryStatus::FAILED;
         }
+        resp.isResultAvailable = (resp.status == QueryStatus::FAILED || resp.status == QueryStatus::COMPLETED);
+
+        if (entry.contains("queryDefinition") && entry["queryDefinition"].is_object()) {
+            const json &def = entry["queryDefinition"];
+            if (def.contains("CopyQuery") && def["CopyQuery"].is_object()) {
+                const json &copy_query = def["CopyQuery"];
+                resp.copyQuery.path = copy_query.value("sourceFilepath", std::string());
+                resp.copyQuery.destinationTableName = copy_query.value("destinationTableName", std::string());
+                resp.copyQuery.doesCsvContainHeader = copy_query.value("doesCsvContainHeader", false);
+                if (copy_query.contains("destinationColumns") && copy_query["destinationColumns"].is_array()) {
+                    for (const auto &c : copy_query["destinationColumns"]) {
+                        if (c.is_string()) resp.copyQuery.destinationColumns.push_back(c.get<std::string>());
+                    }
+                }
+            } else if (def.contains("SelectQuery") && def["SelectQuery"].is_object()) {
+                const json &select_query = def["SelectQuery"];
+                resp.selectQuery.tableName = select_query.value("tableName", std::string());
+            }
+        }
+
+        return resp;
     }
-    return json::object();
+
+    return std::nullopt;
 }
 
 nlohmann::json getQueries(){
