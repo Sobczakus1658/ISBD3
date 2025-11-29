@@ -139,3 +139,7 @@ sudo cmake --install build
 sudo apt install libfmt-dev
 sudo apt install -y nlohmann-json3-dev
 
+sudo apt install libgtest-dev
+sudo apt install cmake
+ sudo apt update && sudo apt install -y build-essential cmake pkg-config libcurl4-openssl-dev git
+

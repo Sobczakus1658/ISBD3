@@ -4,12 +4,22 @@
 #include <iostream>
 #include <iomanip>
 
-
-using json = nlohmann::json;
 using namespace std;
 
 namespace fs = std::filesystem;
 static const fs::path basePath =  fs::current_path() / "queries/results.json";
+
+
+string statusToString(int s) {
+    switch (s) {
+            case 0: return "CREATED";
+            case 1: return "PLANNING";
+            case 2: return "RUNNING";
+            case 3: return "COMPLETED";
+            case 4: return "FAILED";
+            default: return "UNKNOWN";
+        }
+}
 
 json readFileQueries(){
     json result;
@@ -106,7 +116,7 @@ std::optional<QueryResponse> getQueryResponse(const std::string &id) {
     json results = readFileQueries();
 
     for (const auto &entry : results) {
-        std::string entryId = entry.value("id", std::string());
+        std::string entryId = entry.value("queryId", std::string());
         if (entryId != id) continue;
 
         QueryResponse resp;
@@ -135,7 +145,7 @@ std::optional<QueryResponse> getQueryResponse(const std::string &id) {
     return std::nullopt;
 }
 
-nlohmann::json getQueries(){
+json getQueries(){
     json results = readFileQueries();
     json out = json::array();
 
@@ -154,7 +164,8 @@ nlohmann::json getQueries(){
 
         json obj = json::object();
         obj["queryId"] = id;
-        obj["status"] = status_num;
+        // obj["status"] = status_num;
+        obj["status"] = statusToString(status_num) ;
         out.push_back(std::move(obj));
     }
 
@@ -168,6 +179,8 @@ void changeStatus(std::string id, QueryStatus status) {
         if (!entry.is_object()) continue;
         std::string entryQid = entry.value("queryId", std::string());
         if (entryQid == id) {
+            std::cout << "Zmieniam" << "\n";
+            std::fflush(stdout);
             entry["status"] = static_cast<int>(status);
             bool isResult = (status == QueryStatus::FAILED || status == QueryStatus::COMPLETED);
             entry["isResultAvailable"] = isResult;

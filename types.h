@@ -33,7 +33,7 @@ enum class SELECT_TABLE_ERROR {
 
 struct CreateTableResult {
     std::string tableId;
-    CREATE_TABLE_ERROR error;
+    std::vector<string> error;
 };
 
 using Column = std::variant<std::vector<int64_t>, std::vector<std::string>>;

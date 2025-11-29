@@ -1,5 +1,6 @@
 #include "errors.h"
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 
 namespace fs = std::filesystem;
@@ -12,10 +13,19 @@ json readFileErrors(){
         return json::array();
     }
     err >> result;
-    return result;
+    // Ensure we always return a JSON array. If the file contains a single object
+    // (old shape or corruption), wrap it into an array so callers can push_back()
+    if (result.is_array()) return result;
+    json out = json::array();
+    if (!result.is_null()) {
+        out.push_back(result);
+    }
+    std::cerr << "[errors] readFileErrors: wrapped non-array errors.json into array" << std::endl;
+    return out;
 }
 
 std::optional<QueryError> getQueryError(std::string id){
+    std::cout << "[errors] getQueryError for id=" << id << std::endl;
     json data = readFileErrors();
     for (const auto &entry : data) {
         if (!entry.is_object()) continue;
@@ -38,6 +48,7 @@ std::optional<QueryError> getQueryError(std::string id){
 }
 
 void addError(std::string id, json multipleProblemsError){
+    std::cout << "[errors] addError id=" << id << " payload=" << multipleProblemsError.dump() << std::endl;
     json data = readFileErrors();
 
     json problems = json::array();
@@ -54,6 +65,11 @@ void addError(std::string id, json multipleProblemsError){
     data.push_back(std::move(entry));
 
     std::ofstream out(basePath);
+    if (!out.is_open()) {
+        std::cerr << "[errors] addError failed to open " << basePath << " for writing" << std::endl;
+        return;
+    }
     out << std::setw(2) << data << std::endl;
     out.close();
+    std::cout << "[errors] addError wrote to " << basePath << std::endl;
 }

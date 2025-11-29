@@ -6,7 +6,11 @@
 #include <unordered_map>
 #include <cstdio>
 #include <algorithm>
+#include <filesystem>
+#include <limits>
+#include <cctype>
 
+namespace fs = std::filesystem;
 
 std::string nameFile(uint32_t counter){
     char buf[32];
@@ -59,6 +63,29 @@ static void saveMap(const std::unordered_map<std::string, ColumnInfo> &map, std:
     out.write((const char*) (&index_start), sizeof(index_start));
 }
 
+uint32_t initFileCounter(const std::string& folderPath){
+    if (folderPath.empty()) return 0;
+    fs::path p(folderPath);
+
+    if (!fs::exists(p) || !fs::is_directory(p)) return 0;
+
+    uint32_t max_idx = std::numeric_limits<uint32_t>::max();
+    int64_t max_found = -1;
+    for (const auto &entry : fs::directory_iterator(p)) {
+
+        std::string name = entry.path().filename().string();
+        const std::string prefix = "part";
+        std::string suffix = name.substr(prefix.size());
+        int idx = std::stoi(suffix);
+        if (idx > max_found) { 
+            max_found = idx;
+        }
+    }
+
+    if (max_found < 0) return 0;
+    return static_cast<uint32_t>(max_found + 1);
+}
+
 static void clearMap(std::unordered_map<std::string, ColumnInfo> &map) {
     for (auto &kv : map) {
         kv.second.first = 0;
@@ -66,7 +93,7 @@ static void clearMap(std::unordered_map<std::string, ColumnInfo> &map) {
 }
 
 std::vector<std::string> serializator(std::vector<Batch> &batches, const std::string& folderPath, uint64_t PART_LIMIT) {
-    static uint32_t file_counter = 0;
+    uint32_t file_counter = initFileCounter(folderPath);
     std::vector<std::string> filesNames;
     std::unordered_map<std::string, ColumnInfo> last_offset;
     if (!batches.empty()) last_offset = initMap(batches[0]);

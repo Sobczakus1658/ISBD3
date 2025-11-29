@@ -3,7 +3,7 @@
 #include <fstream>
 #include <iostream>
 
-using json = nlohmann::json;
+using json = nlohmann::ordered_json;;
 namespace fs = std::filesystem;
 static const fs::path basePath =  fs::current_path() / "results/results.json";
 

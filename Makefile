@@ -1,4 +1,4 @@
-.PHONY: all clean batches
+.PHONY: all clean batches tests
 
 CXX = g++
 CXXFLAGS = -std=c++20 -g \
@@ -7,14 +7,15 @@ CXXFLAGS = -std=c++20 -g \
            -I cpp-client \
            -I/usr/local/include \
            -I restbed-old/source \
-           -I csv-parser/include
+           -I csv-parser/include \
+           -I thirdparty/include
 
 LDFLAGS = -L zstd/lib -lssl -lcrypto -lboost_system -lpthread -lzstd
 
 TARGET = main
 
+# Źródła aplikacji
 SRC = main.cpp \
-      tests/tests.cpp \
       codec/codec_int.cpp \
       codec/codec_string.cpp \
       serialization/serializator.cpp \

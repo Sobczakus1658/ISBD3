@@ -30,8 +30,10 @@ std::string get_path(const TableInfo &info){
 
 QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
     QueryCreatedResponse response;
+    std::cout << "[executionService] copyCSV called, query_id=" << query_id << " dest_table='" << q.destinationTableName << "' path='" << q.path << "'" << std::endl;
     std::optional<TableInfo> infoOpt = getTableInfoByName(q.destinationTableName);
     if (!infoOpt) {
+        std::cerr << "[executionService] destination table not found: " << q.destinationTableName << std::endl;
         response.status = CSV_TABLE_ERROR::TABLE_NOT_FOUND;
         return response;
     }
@@ -69,6 +71,7 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
     Batch batch = make_empty_batch(intCount, strCount);
 
     if (!fs::exists(q.path)) {
+        std::cerr << "[executionService] CSV file not found: " << q.path << std::endl;
         response.status = CSV_TABLE_ERROR::FILE_NOT_FOUND;
         return response;
     }
@@ -103,26 +106,33 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
 
     for (csv::CSVRow& row : reader) {
 
-        // if (row.size() != colTypes.size()) {
-        //     response.status = CSV_TABLE_ERROR::INVALID_COLUMN_NUMBER;
-        //     return response;
-        // }
         if (!q.destinationColumns.empty()) {
-            if (row.size() != q.destinationColumns.size()) {
-                response.status = CSV_TABLE_ERROR::INVALID_COLUMN_NUMBER;
-                return response;
+            cout << "[";
+            for (size_t i = 0; i < q.destinationColumns.size(); ++i) {
+            if (i) cout << ", ";
+            cout << q.destinationColumns[i];
             }
+            cout << "]\n";
         } else {
-            if (row.size() != colTypes.size()) {
+            cout << "destinationColumns: []\n";
+        }
+
+        size_t columnsToProcess = 0;
+        if (!q.destinationColumns.empty()) {
+            columnsToProcess = csvToTable.size();
+        } else {
+            columnsToProcess = colTypes.size();
+        }
+
+        if (row.size() != columnsToProcess) {
+            std::cerr << "[executionService] row has fewer columns (" << row.size() << ") than expected (" << columnsToProcess << ")" << std::endl;
             response.status = CSV_TABLE_ERROR::INVALID_COLUMN_NUMBER;
             return response;
-            }
         }
 
         size_t intIdx = 0, strIdx = 0;
 
-        for (size_t i = 0; i < row.size(); i++) {
-            // const auto& colType = colTypes[i];
+        for (size_t i = 0; i < columnsToProcess; i++) {
             int tbl_i = csvToTable[i];
             const auto &colType = colTypes[tbl_i];
             try {
@@ -136,6 +146,7 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
                     strIdx++;
                 } 
             } catch (const std::exception &e) {
+                std::cerr << "[executionService] type conversion error: " << e.what() << " on row element " << i << std::endl;
                 response.status = CSV_TABLE_ERROR::INVALID_TYPE;
                 return response;
             }
@@ -168,6 +179,7 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
     }
 
     addLocationAndFiles(info.id, path, fileNames);
+    std::cout << "[executionService] copyCSV finished, wrote files_count=" << fileNames.size() << " to path=" << path << std::endl;
 
     response.status = CSV_TABLE_ERROR::NONE;
     return response;

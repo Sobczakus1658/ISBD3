@@ -26,19 +26,31 @@
 #include <random> 
 #include "controler.h"
 
-using json = nlohmann::json;
+using json = nlohmann::ordered_json;
 
 using namespace std;
 using namespace restbed;
 
-json prepareTablesInfo(const map<uint64_t, string>& tables) {
-    json response_json = json::array();
+static inline void log_info(const std::string &msg) {
+    std::cerr << "[info] " << msg << std::endl;
+}
 
+static inline void log_error(const std::string &msg) {
+    std::cerr << "[error] " << msg << std::endl;
+}
+
+json getSystemInfo() {
+    json response_json;
+    response_json["interfaceVersion"] = 1.0;
+    response_json["version"] = 1.0;
+    response_json["author"] = "Michał Sobczak";
+    return response_json;
+}
+
+json prepareTablesInfo(const map<uint64_t, string>& tables) {
+    json response_json = json::object();
     for (const auto& [id, name] : tables) {
-        response_json.push_back({
-            {"id", id},
-            {"name", name}
-        });
+        response_json[name] = id;
     }
     return response_json;
 }
@@ -90,6 +102,7 @@ json prepareQueryResponse(const QueryResponse &response) {
         json_info["SelectQuery"] = std::move(select_query);
     }
 
+    log_info(std::string("prepareQueryResponse: ") + json_info.dump());
     return json_info;
 }
 
@@ -132,6 +145,16 @@ json createErrorResponse(const string message) {
     j["problems"].push_back({ {"error", message} });
     return j;
 }
+
+json errorResponse(const vector<string> messages) {
+    json j = json::object();
+    j["problems"] = json::array();
+    for(auto message: messages) {
+        j["problems"].push_back({ {"error", message} });
+    }
+    return j;
+}
+
 
 static bool handleCsvError(const std::shared_ptr<Session>& session, const std::string &query_id, CSV_TABLE_ERROR code) {
     if (code == CSV_TABLE_ERROR::NONE) return false;
@@ -192,58 +215,95 @@ QueryType recogniseQuery(const json &query) {
 }
 
 void getTablesHandler(const shared_ptr<Session> session) {
+    log_info("handler getTablesHandler entered");
     session->close(200,  prepareTablesInfo(getTables()).dump(), { {"Content-Type", "application/json"} });
 }
 
 void getTableByIdHandler(const shared_ptr<Session> session) {
+    log_info("handler getTableByIdHandler entered");
     const auto request = session->get_request();
     std::string tableIdStr = request->get_path_parameter("tableId");
     uint64_t tableId = std::stoull(tableIdStr);
     optional<TableInfo> tableInfo = getTableInfo(tableId);
 
     if (!tableInfo.has_value()) {
-        session->close(404, "{\"error\":\"Table not found\"}\n", {{"Content-Type", "application/json"}});
+        session->close(404, "{\"error\":\"Table " + tableIdStr +  "not found\"}\n", {{"Content-Type", "application/json"}});
         return;
     }
     session->close(200, prepareTableInfo(tableInfo.value()),{{"Content-Type", "application/json"}});
 }
 
 void createTableHandler(const shared_ptr<Session> session) {
+    log_info("handler createTableHandler entered");
     int content_length = session->get_request()->get_header("Content-Length", 0);
 
     session->fetch(content_length,
         [](const std::shared_ptr<restbed::Session> session, const restbed::Bytes &body) {
 
             std::string json_body(body.begin(), body.end());
-            json parsed = json::parse(json_body);
+
+            // defensive parse + diagnostics: accept object or single-element array containing the object
+            json parsed;
+            try {
+                parsed = json::parse(json_body);
+            } catch (const std::exception &e) {
+                std::string err = std::string("JSON parse error: ") + e.what();
+                json error = json::object();
+                error["problems"] = json::array();
+                error["problems"].push_back({ {"error", err}, {"context", json_body} });
+                session->close(400, error.dump(), { {"Content-Type", "application/json"} });
+                return;
+            }
+
+            if (parsed.is_array()) {
+                // some clients may accidentally wrap the object in an array; accept single-element array
+                if (parsed.size() == 1 && parsed[0].is_object()) {
+                    parsed = parsed[0];
+                } else {
+                    json error = json::object();
+                    error["problems"] = json::array();
+                    error["problems"].push_back({ {"error", "Expected JSON object with table definition"}, {"context", parsed.dump()} });
+                    session->close(400, error.dump(), { {"Content-Type", "application/json"} });
+                    return;
+                }
+            }
 
             CreateTableResult result = createTable(parsed);
+
             json response_json;
-
-            switch (result.error){
-                case CREATE_TABLE_ERROR::NONE:
-                    response_json["tableId"] = result.tableId;
-                    session->close(200, response_json.dump(), { {"Content-Type", "application/json"} });
-                    break;
-
-                case CREATE_TABLE_ERROR::INVALID_COLUMN_TYPE:
-                    response_json["problems"] = {
-                        { {"error", "Invalid column type. Allowed: INT64, VARCHAR"} }
-                    };
-                    session->close(400, response_json.dump(), { {"Content-Type", "application/json"} });
-                    break;
-
-                case CREATE_TABLE_ERROR::TABLE_EXISTS:
-                    response_json["problems"] = {
-                        { {"error", "A table with the specified name already exists."} }
-                    };
-                    session->close(400, response_json.dump(), { {"Content-Type", "application/json"} });
+            if (result.error.empty()) {
+                response_json["tableId"] = result.tableId;
+                session->close(200, response_json.dump(), { {"Content-Type", "application/json"} });
+                return;
+            } else {
+                response_json = errorResponse(result.error);
+                session->close(400, response_json.dump(), { {"Content-Type", "application/json"} });
             }
+            // switch (result.error){
+                // case CREATE_TABLE_ERROR::NONE:
+                //     response_json["tableId"] = result.tableId;
+                //     session->close(200, response_json.dump(), { {"Content-Type", "application/json"} });
+                //     break;
+
+                // case CREATE_TABLE_ERROR::INVALID_COLUMN_TYPE:
+                //     response_json["problems"] = {
+                //         { {"error", "Invalid column type. Allowed: INT64, VARCHAR"} }
+                //     };
+                //     session->close(400, response_json.dump(), { {"Content-Type", "application/json"} });
+                //     break;
+
+                // case CREATE_TABLE_ERROR::TABLE_EXISTS:
+                //     response_json["problems"] = {
+                //         { {"error", "A table with the specified name already exists."} }
+                //     };
+                //     session->close(400, response_json.dump(), { {"Content-Type", "application/json"} });
+            // }
         }
     );
 }
 
 void deleteTableHandler(const shared_ptr<Session> session) {
+    log_info("handler deleteTableHandler entered");
     const auto request = session->get_request();
     std::string tableIdStr = request->get_path_parameter("tableId");
     uint64_t tableId = std::stoull(tableIdStr);
@@ -258,17 +318,31 @@ void deleteTableHandler(const shared_ptr<Session> session) {
 }
 
 void getQueriesHandler(const shared_ptr<Session> session) {
+    log_info("handler getQueriesHandler entered");
     session->close(200, getQueries().dump(),{{"Content-Type", "application/json"}});
 }
 
 void submitQueryHandler(const shared_ptr<Session> session)
 {
+    log_info("handler submitQueryHandler entered");
     int content_length = session->get_request()->get_header("Content-Length", 0);
 
     session->fetch(content_length,
         [](const std::shared_ptr<restbed::Session> session, const restbed::Bytes &body) {
             std::string json_body(body.begin(), body.end());
+
+
+            
+            log_info(std::string("submitQuery raw body: ") + json_body);
             json json_message = json::parse(json_body);
+            try {
+                log_info(std::string("submitQuery parsed JSON: ") + json_message.dump(2));
+            } catch (...) {
+                log_info(std::string("submitQuery parsed JSON: (unable to dump)"));
+            }
+
+
+
             QueryType type = recogniseQuery(json_message);
             const auto &def = json_message["queryDefinition"];
             std::random_device rd;
@@ -279,8 +353,27 @@ void submitQueryHandler(const shared_ptr<Session> session)
             json jsonResponse;
             jsonResponse["queryId"] = query_id;
             changeStatus(query_id, QueryStatus::PLANNING);
+
+                        log_info(std::string("createTable raw body size: ") + std::to_string(json_body.size()));
+            log_info(std::string("createTable raw body: ") + json_body);
+
+            json parsed;
+            try {
+                parsed = json::parse(json_body);
+            } catch (const std::exception &e) {
+                std::string err = std::string("JSON parse error: ") + e.what();
+                log_error(std::string("createTable parse error: ") + e.what());
+                json error = json::object();
+                error["problems"] = json::array();
+                error["problems"].push_back({ {"error", err}, {"context", json_body} });
+                session->close(400, error.dump(), { {"Content-Type", "application/json"} });
+                return;
+            }
+
+
             switch(type) {
                 case QueryType::COPY: {
+                    log_info("submitQuery handling COPY query");
                     const auto &cq = def["CopyQuery"];
                     CopyQuery copyQuery;
 
@@ -296,10 +389,14 @@ void submitQueryHandler(const shared_ptr<Session> session)
                         copyQuery.destinationColumns = columns;
                     }
                     
+                    log_info("submitQuery added query definition, calling copyCSV()");
                     addQueryDefinition(query_id, copyQuery);
                     QueryCreatedResponse response = copyCSV(copyQuery, query_id);
 
+                    log_info(std::string("submitQuery copyCSV returned, status=") + std::to_string(static_cast<int>(response.status)));
+
                     if (response.status == CSV_TABLE_ERROR::NONE) {
+                        log_info(std::string("copyCSV completed with status=") + std::to_string(static_cast<int>(response.status)));
                         changeStatus(query_id, QueryStatus::COMPLETED);
                         session->close(200, jsonResponse.dump(), { {"Content-Type", "application/json"} });
                     } else {
@@ -333,8 +430,10 @@ void submitQueryHandler(const shared_ptr<Session> session)
 }
 
 void getQueryHandler(const shared_ptr<Session> session) {
+    log_info("handler getQueryHandler entered");
     const auto request = session->get_request();
     std::string queryIdStr = request->get_path_parameter("queryId");
+    log_info(std::string("getQueryHandler request for queryId=") + queryIdStr);
     optional<QueryResponse> result = getQueryResponse(queryIdStr);
 
     if (!result.has_value()) {
@@ -348,6 +447,7 @@ void getQueryHandler(const shared_ptr<Session> session) {
 }
 
 void getQueryResultHandler(const shared_ptr<Session> session) {
+    log_info("handler getQueryResultHandler entered");
     const auto request = session->get_request();
     std::string queryIdStr = request->get_path_parameter("queryId");
     optional<QueryResult> result = getQueryResult(queryIdStr);
@@ -362,6 +462,7 @@ void getQueryResultHandler(const shared_ptr<Session> session) {
 }
 
 void getQueryErrorHandler(const shared_ptr<Session> session) {
+    log_info("handler getQueryErrorHandler entered");
     const auto request = session->get_request();
     std::string queryIdStr = request->get_path_parameter("queryId");
     optional<QueryError> result = getQueryError(queryIdStr);
@@ -375,6 +476,10 @@ void getQueryErrorHandler(const shared_ptr<Session> session) {
     session->close(200, response.dump(), { {"Content-Type", "application/json"} });
 }
 
+void getSystemHandler(const shared_ptr<Session> session) {
+    log_info("handler getSystemHandler entered");
+    session->close(200, getSystemInfo().dump(), { {"Content-Type", "application/json"} });
+}
 void setUpApi(){
 
     auto tablesResource = make_shared<Resource>();
@@ -410,8 +515,13 @@ void setUpApi(){
     queryErrorResource->set_path("/error/{queryId: .*}");
     queryErrorResource->set_method_handler("GET", getQueryErrorHandler);
 
+    auto systemResource = make_shared<Resource>();
+    systemResource->set_path("/system/info");
+    systemResource->set_method_handler("GET", getSystemHandler);
+
     auto settings = make_shared<Settings>();
-    settings->set_port(8080);
+    settings->set_port(8085);
+    settings->set_bind_address("0.0.0.0");
     settings->set_default_header("Connection", "close");
 
     Service service;
@@ -423,10 +533,7 @@ void setUpApi(){
     service.publish(getQueriesResource);
     service.publish(getQueryResource);
     service.publish(queryErrorResource);
+    service.publish(systemResource);
 
     service.start(settings);
 }
-
-// int main(){
-//     setUpApi();
-// }
