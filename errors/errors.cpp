@@ -1,32 +1,13 @@
 #include "errors.h"
+#include "../utils/utils.h"
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 
-namespace fs = std::filesystem;
-static const fs::path basePath =  fs::current_path() / "errors/errors.json";
-
-json readFileErrors(){
-    json result;
-    ifstream err(basePath);
-    if (!err.is_open()) {
-        return json::array();
-    }
-    err >> result;
-    // Ensure we always return a JSON array. If the file contains a single object
-    // (old shape or corruption), wrap it into an array so callers can push_back()
-    if (result.is_array()) return result;
-    json out = json::array();
-    if (!result.is_null()) {
-        out.push_back(result);
-    }
-    std::cerr << "[errors] readFileErrors: wrapped non-array errors.json into array" << std::endl;
-    return out;
-}
+static const filesystem::path basePath =  filesystem::current_path() / "errors/errors.json";
 
 std::optional<QueryError> getQueryError(std::string id){
-    std::cout << "[errors] getQueryError for id=" << id << std::endl;
-    json data = readFileErrors();
+    json data = readLocalFile(basePath);
     for (const auto &entry : data) {
         if (!entry.is_object()) continue;
         std::string entryId = entry.value("id", std::string());
@@ -48,8 +29,7 @@ std::optional<QueryError> getQueryError(std::string id){
 }
 
 void addError(std::string id, json multipleProblemsError){
-    std::cout << "[errors] addError id=" << id << " payload=" << multipleProblemsError.dump() << std::endl;
-    json data = readFileErrors();
+    json data = readLocalFile(basePath);
 
     json problems = json::array();
     if (multipleProblemsError.is_object() && multipleProblemsError.contains("problems") && multipleProblemsError["problems"].is_array()) {
@@ -64,12 +44,5 @@ void addError(std::string id, json multipleProblemsError){
     for (const auto &p : problems) entry["problems"].push_back(p);
     data.push_back(std::move(entry));
 
-    std::ofstream out(basePath);
-    if (!out.is_open()) {
-        std::cerr << "[errors] addError failed to open " << basePath << " for writing" << std::endl;
-        return;
-    }
-    out << std::setw(2) << data << std::endl;
-    out.close();
-    std::cout << "[errors] addError wrote to " << basePath << std::endl;
+    saveFile(basePath, data);
 }

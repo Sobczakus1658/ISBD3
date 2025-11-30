@@ -3,85 +3,14 @@
 #include <fstream>
 #include <iostream>
 #include <iomanip>
+#include "../utils/utils.h"
 
 using namespace std;
 
-namespace fs = std::filesystem;
-static const fs::path basePath =  fs::current_path() / "queries/results.json";
-
-
-string statusToString(int s) {
-    switch (s) {
-            case 0: return "CREATED";
-            case 1: return "PLANNING";
-            case 2: return "RUNNING";
-            case 3: return "COMPLETED";
-            case 4: return "FAILED";
-            default: return "UNKNOWN";
-        }
-}
-
-json readFileQueries(){
-    json result;
-    ifstream queries(basePath);
-    if (!queries.is_open()) {
-        return json::array();
-    }
-    queries >> result;
-    return result;
-}
-
-static json copyQueryToJson(const CopyQuery &q) {
-    json j = json::object();
-    j["sourceFilepath"] = q.path;
-    j["destinationTableName"] = q.destinationTableName;
-    j["doesCsvContainHeader"] = q.doesCsvContainHeader;
-    j["destinationColumns"] = json::array();
-    for (const auto &c : q.destinationColumns) j["destinationColumns"].push_back(c);
-    return j;
-}
-
-static json selectQueryToJson(const SelectQuery &q) {
-    json j = json::object();
-    j["tableName"] = q.tableName;
-    return j;
-}
-
-static json buildQueryDefinition(const QueryToJson &q) {
-    if (auto pc = std::get_if<CopyQuery>(&q)) {
-        json def = json::object();
-        def["CopyQuery"] = copyQueryToJson(*pc);
-        return def;
-    }
-    if (auto ps = std::get_if<SelectQuery>(&q)) {
-        json def = json::object();
-        def["SelectQuery"] = selectQueryToJson(*ps);
-        return def;
-    }
-    return json::object();
-}
-
-static CopyQuery jsonToCopyQuery(const json &copy_query) {
-    CopyQuery cq;
-    cq.path = copy_query.value("sourceFilepath", std::string());
-    cq.destinationTableName = copy_query.value("destinationTableName", std::string());
-    cq.doesCsvContainHeader = copy_query.value("doesCsvContainHeader", false);
-    if (copy_query.contains("destinationColumns") && copy_query["destinationColumns"].is_array()) {
-        for (const auto &c : copy_query["destinationColumns"]) {
-            if (c.is_string()) cq.destinationColumns.push_back(c.get<std::string>());
-        }
-    }
-    return cq;
-}
-
-static SelectQuery jsonToSelectQuery(const json &select_query) {
-    SelectQuery sq;
-    sq.tableName = select_query.value("tableName", std::string());
-    return sq;
-}
+static const filesystem::path basePath =  filesystem::current_path() / "queries/queries.json";
 
 void initQuery(std::string id){
-    json results = readFileQueries();
+    json results = readLocalFile(basePath);
 
     json new_entry = json::object();
     new_entry["queryId"] = id;
@@ -89,13 +18,11 @@ void initQuery(std::string id){
     new_entry["status"] = QueryStatus::CREATED;
     new_entry["isResultAvailable"] = false;
     results.push_back(new_entry);
-    std::ofstream out(basePath);
-    out << std::setw(2) << results << std::endl;
-    out.close();
+    saveFile(basePath, results);
 }
 
 void modifyStatus(std::string id, QueryStatus status) {
-    json results = readFileQueries();
+    json results = readLocalFile(basePath);
 
     auto it = std::find_if(results.begin(), results.end(),
         [&id](const json& entry) -> bool {
@@ -107,13 +34,11 @@ void modifyStatus(std::string id, QueryStatus status) {
     }
     (*it)["status"] = static_cast<int>(status);
 
-    std::ofstream outFile(basePath);
-    outFile << std::setw(2) << results << std::endl;
-    outFile.close();
+    saveFile(basePath, results);
 }
 
 std::optional<QueryResponse> getQueryResponse(const std::string &id) {
-    json results = readFileQueries();
+    json results = readLocalFile(basePath);
 
     for (const auto &entry : results) {
         std::string entryId = entry.value("queryId", std::string());
@@ -146,7 +71,7 @@ std::optional<QueryResponse> getQueryResponse(const std::string &id) {
 }
 
 json getQueries(){
-    json results = readFileQueries();
+    json results = readLocalFile(basePath);
     json out = json::array();
 
     for (const auto &entry : results) {
@@ -164,8 +89,7 @@ json getQueries(){
 
         json obj = json::object();
         obj["queryId"] = id;
-        // obj["status"] = status_num;
-        obj["status"] = statusToString(status_num) ;
+        obj["status"] = statusToStringFromInt(status_num) ;
         out.push_back(std::move(obj));
     }
 
@@ -173,35 +97,29 @@ json getQueries(){
 }
 
 void changeStatus(std::string id, QueryStatus status) {
-    json results = readFileQueries();
+    json results = readLocalFile(basePath);
 
     for (auto &entry : results) {
         if (!entry.is_object()) continue;
         std::string entryQid = entry.value("queryId", std::string());
         if (entryQid == id) {
-            std::cout << "Zmieniam" << "\n";
-            std::fflush(stdout);
             entry["status"] = static_cast<int>(status);
             bool isResult = (status == QueryStatus::FAILED || status == QueryStatus::COMPLETED);
             entry["isResultAvailable"] = isResult;
-            std::ofstream outFile(basePath);
-            outFile << std::setw(2) << results << std::endl;
-            outFile.close();
+            saveFile(basePath, results);
         }
     }
 }
 
 void addQueryDefinition(std::string id, QueryToJson query) {
-    json results = readFileQueries();
+    json results = readLocalFile(basePath);
     for (auto &entry : results) {
         if (!entry.is_object()) continue;
 
         std::string entryQid = entry.value("queryId", std::string());
         if (entryQid == id) {
             entry["queryDefinition"] = buildQueryDefinition(query);
-            std::ofstream outFile(basePath);
-            outFile << std::setw(2) << results << std::endl;
-            outFile.close();
+            saveFile(basePath, results);
         }
     }
 }

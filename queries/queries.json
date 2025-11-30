@@ -1,0 +1,431 @@
+[
+  {
+    "queryId": "14243484311162096030",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_basic_1764511323.csv",
+        "destinationTableName": "ct_basic_1764511323",
+        "doesCsvContainHeader": false,
+        "destinationColumns": []
+      }
+    },
+    "status": 3,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "10332995993275456296",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_headers_1764511323.csv",
+        "destinationTableName": "ct_headers_1764511323",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 3,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "9949955993620573819",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_destcols_1764511324.csv",
+        "destinationTableName": "ct_destcols_1764511324",
+        "doesCsvContainHeader": true,
+        "destinationColumns": [
+          "note",
+          "id"
+        ]
+      }
+    },
+    "status": 3,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "13846052725358128384",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_invaliddata_1764511324.csv",
+        "destinationTableName": "ct_invaliddata_1764511324",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "4557859932915390875",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_morecols_1764511324.csv",
+        "destinationTableName": "ct_morecols_1764511324",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "8433622158791147920",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_lesscols_1764511324.csv",
+        "destinationTableName": "ct_lesscols_1764511324",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "2338722772604862366",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/not_exists_1764511324.csv",
+        "destinationTableName": "not_exists_1764511324",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "16185442978192766306",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/does-not-exist-1764511324.csv",
+        "destinationTableName": "ct_path_1764511324",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "9819425564215441032",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/qr_ok_1764511324.csv",
+        "destinationTableName": "qr_ok_1764511324",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 3,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "17989105990174859480",
+    "queryDefinition": {
+      "SelectQuery": {
+        "tableName": "qr_ok_1764511324"
+      }
+    },
+    "status": 3,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "17320861676912671443",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/qe_err_1764511324.csv",
+        "destinationTableName": "qe_err_1764511324",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "8491225222324847325",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_basic_1764514293.csv",
+        "destinationTableName": "ct_basic_1764514293",
+        "doesCsvContainHeader": false,
+        "destinationColumns": []
+      }
+    },
+    "status": 3,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "10034570397887377138",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_headers_1764514293.csv",
+        "destinationTableName": "ct_headers_1764514293",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 3,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "12435374289307511409",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_destcols_1764514293.csv",
+        "destinationTableName": "ct_destcols_1764514293",
+        "doesCsvContainHeader": true,
+        "destinationColumns": [
+          "note",
+          "id"
+        ]
+      }
+    },
+    "status": 3,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "3385322723155370624",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_invaliddata_1764514293.csv",
+        "destinationTableName": "ct_invaliddata_1764514293",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "17213975585511147321",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_morecols_1764514293.csv",
+        "destinationTableName": "ct_morecols_1764514293",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "7872637804883967337",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_lesscols_1764514293.csv",
+        "destinationTableName": "ct_lesscols_1764514293",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "4936671808496295598",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/not_exists_1764514293.csv",
+        "destinationTableName": "not_exists_1764514293",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "13321872507031245106",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/does-not-exist-1764514293.csv",
+        "destinationTableName": "ct_path_1764514293",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "9038910107057350483",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/qr_ok_1764514293.csv",
+        "destinationTableName": "qr_ok_1764514293",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 3,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "17016895983015970588",
+    "queryDefinition": {
+      "SelectQuery": {
+        "tableName": "qr_ok_1764514293"
+      }
+    },
+    "status": 3,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "4002553321247305041",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/qe_err_1764514294.csv",
+        "destinationTableName": "qe_err_1764514294",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "461513317347932012",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_basic_1764514451.csv",
+        "destinationTableName": "ct_basic_1764514451",
+        "doesCsvContainHeader": false,
+        "destinationColumns": []
+      }
+    },
+    "status": 3,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "11944258464463282096",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_headers_1764514454.csv",
+        "destinationTableName": "ct_headers_1764514454",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 3,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "15366803191608083272",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_destcols_1764514454.csv",
+        "destinationTableName": "ct_destcols_1764514454",
+        "doesCsvContainHeader": true,
+        "destinationColumns": [
+          "note",
+          "id"
+        ]
+      }
+    },
+    "status": 3,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "17479367773485189121",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_invaliddata_1764514454.csv",
+        "destinationTableName": "ct_invaliddata_1764514454",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "10396826224034804616",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_morecols_1764514454.csv",
+        "destinationTableName": "ct_morecols_1764514454",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "1590133992840416603",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/ct_lesscols_1764514454.csv",
+        "destinationTableName": "ct_lesscols_1764514454",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "11640938067996933329",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/not_exists_1764514454.csv",
+        "destinationTableName": "not_exists_1764514454",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "6131491660620742008",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/does-not-exist-1764514454.csv",
+        "destinationTableName": "ct_path_1764514454",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "12994714182168607688",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/qr_ok_1764514454.csv",
+        "destinationTableName": "qr_ok_1764514454",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 3,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "397867234763280508",
+    "queryDefinition": {
+      "SelectQuery": {
+        "tableName": "qr_ok_1764514454"
+      }
+    },
+    "status": 3,
+    "isResultAvailable": true
+  },
+  {
+    "queryId": "4029203312894581297",
+    "queryDefinition": {
+      "CopyQuery": {
+        "sourceFilepath": "/tmp/qe_err_1764514455.csv",
+        "destinationTableName": "qe_err_1764514455",
+        "doesCsvContainHeader": true,
+        "destinationColumns": []
+      }
+    },
+    "status": 4,
+    "isResultAvailable": true
+  }
+]

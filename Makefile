@@ -27,7 +27,8 @@ SRC = main.cpp \
       queries/queries.cpp \
       results/results.cpp \
       controler.cpp \
-      errors/errors.cpp
+      errors/errors.cpp \
+      utils/utils.cpp
 
 SRC += $(wildcard restbed-old/source/corvusoft/restbed/*.cpp)
 SRC += $(wildcard restbed-old/source/corvusoft/restbed/detail/*.cpp)

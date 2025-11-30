@@ -5,7 +5,7 @@
 #include <optional>
 
 
-using json = nlohmann::ordered_json;;
+using json = nlohmann::ordered_json;
 
 std::optional<QueryError> getQueryError(std::string id);
 

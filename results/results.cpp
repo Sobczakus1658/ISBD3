@@ -1,24 +1,14 @@
 #include "results.h"
+#include "../utils/utils.h"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
 
-using json = nlohmann::ordered_json;;
-namespace fs = std::filesystem;
-static const fs::path basePath =  fs::current_path() / "results/results.json";
-
-json readFileResult(){
-    json result;
-    ifstream err(basePath);
-    if (!err.is_open()) {
-        return json::array();
-    }
-    err >> result;
-    return result;
-}
+using json = nlohmann::ordered_json;
+static const filesystem::path basePath =  filesystem::current_path() / "results/results.json";
 
 std::optional<QueryResult> getQueryResult(std::string id){
-    json data = readFileResult();
+    json data = readLocalFile(basePath);
 
     for (const auto &entry : data) {
         if (!entry.is_object()) continue;
@@ -62,7 +52,7 @@ std::optional<QueryResult> getQueryResult(std::string id){
 }
 
 void initResult(std::string id){
-    json results = readFileResult();
+    json results = readLocalFile(basePath);;
 
     json new_entry = json::object();
     new_entry["id"] = id;
@@ -70,13 +60,11 @@ void initResult(std::string id){
     new_entry["columns"] = json::array();
 
     results.push_back(new_entry);
-    std::ofstream out(basePath);
-    out << std::setw(2) << results << std::endl;
-    out.close();
+    saveFile(basePath, results);
 }
 
 void modifyResult(std::string id, vector<Batch>& batches){
-    json results = readFileResult();
+    json results = readLocalFile(basePath);
 
     auto it = std::find_if(results.begin(), results.end(),
         [&id](const json& entry) -> bool {
@@ -133,8 +121,5 @@ void modifyResult(std::string id, vector<Batch>& batches){
        entry["rowCount"] = entry["rowCount"].get<int>() + batch.num_rows;
     }
 
-
-    std::ofstream outFile(basePath);
-    outFile << std::setw(2) << results << std::endl;
-    outFile.close();
+    saveFile(basePath, results);
 }

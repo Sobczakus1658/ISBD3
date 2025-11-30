@@ -7,8 +7,8 @@
 #include <cstdint>
 #include <map>
 
-#include "../types.h"
 #include <nlohmann/json.hpp>
+#include "../types.h"
 
 using json = nlohmann::ordered_json;;
 
