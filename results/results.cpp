@@ -7,7 +7,7 @@
 using json = nlohmann::ordered_json;
 static const filesystem::path basePath =  filesystem::current_path() / "results/results.json";
 
-std::optional<QueryResult> getQueryResult(std::string id){
+std::optional<QueryResult> getQueryResult(const std::string &id, int rowLimit){
     json data = readLocalFile(basePath);
 
     for (const auto &entry : data) {
@@ -16,7 +16,10 @@ std::optional<QueryResult> getQueryResult(std::string id){
         if (entryId != id) continue;
 
         QueryResult result;
-        result.rowCount = entry.value("rowCount", 0);
+        int totalRows = entry.value("rowCount", 0);
+        int to_take = totalRows;
+        if (rowLimit > 0 && rowLimit < totalRows) to_take = rowLimit;
+        result.rowCount = to_take;
         result.columns.clear();
 
         if (entry.contains("columns") && entry["columns"].is_array()) {
@@ -24,13 +27,15 @@ std::optional<QueryResult> getQueryResult(std::string id){
                 if (!col.is_array()) continue;
 
                 bool hasString = false;
-                for (const auto &v : col) {
+                for (size_t i = 0; i < col.size() && (int)i < to_take; ++i) {
+                    const auto &v = col[i];
                     if (v.is_string()) { hasString = true; break; }
                 }
 
                 if (hasString) {
                     std::vector<std::string> vec;
-                    for (const auto &v : col) {
+                    for (int i = 0; i < to_take && (size_t)i < col.size(); ++i) {
+                        const auto &v = col[i];
                         if (v.is_string()) vec.push_back(v.get<std::string>());
                         else vec.push_back(v.dump());
                     }
@@ -122,4 +127,16 @@ void modifyResult(std::string id, vector<Batch>& batches){
     }
 
     saveFile(basePath, results);
+}
+
+void removeResult(const std::string &id) {
+    json results = readLocalFile(basePath);
+    for (auto it = results.begin(); it != results.end(); ++it) {
+        if (!it->is_object()) continue;
+        if ((*it).value("id", std::string()) == id) {
+            results.erase(it);
+            saveFile(basePath, results);
+            return;
+        }
+    }
 }

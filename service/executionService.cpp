@@ -4,6 +4,7 @@
 #include "../serialization/deserializator.h"
 #include <csv.hpp>
 #include <random>
+#include <iostream>
 
 
 namespace fs = std::filesystem;
@@ -28,6 +29,17 @@ std::string get_path(const TableInfo &info){
     return tableDir;
 }
 
+void revert_path(fs::path tableDir){
+    try {
+        if (fs::exists(tableDir) && fs::is_directory(tableDir)) {
+            if (fs::is_empty(tableDir)) {
+                fs::remove(tableDir);
+            }
+        }
+    } catch (const std::exception &e) {
+        std::cerr << "revert_path: filesystem error: " << e.what() << std::endl;
+    }
+}
 QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
     QueryCreatedResponse response;
     std::optional<TableInfo> infoOpt = getTableInfoByName(q.destinationTableName);
@@ -70,6 +82,7 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
 
     if (!fs::exists(q.path)) {
         response.status = CSV_TABLE_ERROR::FILE_NOT_FOUND;
+        revert_path(path);
         return response;
     }
     csv::CSVReader reader(q.path, format);
@@ -88,6 +101,7 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
         for (const auto &colName : q.destinationColumns) {
             if (tableNameToIndex.find(colName) == tableNameToIndex.end()) {
                 response.status = CSV_TABLE_ERROR::INVALID_DESTINATION_COLUMN;
+                revert_path(path);
                 return response;
             }
             csvToTable.push_back(tableNameToIndex[colName]);
@@ -110,6 +124,7 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
 
         if (row.size() != columnsToProcess) {
             response.status = CSV_TABLE_ERROR::INVALID_COLUMN_NUMBER;
+            revert_path(path);
             return response;
         }
 
@@ -130,6 +145,7 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
                 } 
             } catch (const std::exception &e) {
                 response.status = CSV_TABLE_ERROR::INVALID_TYPE;
+                revert_path(path);
                 return response;
             }
         }

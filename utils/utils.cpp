@@ -310,7 +310,6 @@ void removeFiles(const std::string &Path, const std::vector<std::string> &file_n
         try {
             if (fs::is_empty(dir)) {
                 fs::remove(dir);
-                log_info(std::string("removeFiles: removed empty directory: ") + dir.string());
             }
         } catch (const std::exception &e) {
             log_error(std::string("removeFiles: filesystem error: ") + e.what());

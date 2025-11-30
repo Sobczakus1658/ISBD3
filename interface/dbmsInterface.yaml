@@ -360,7 +360,7 @@ components:
             type: integer
             format: int32
           columns:
-            description: Array of columns in result (all shold have the same length equal to rowCount)
+            description: Array of columns in result (all should have the same length equal to rowCount)
             type: array
             items:
               oneOf:
@@ -439,6 +439,9 @@ components:
                 description: Maximum number of rows to return
                 type: integer
                 format: int32
+              flushResult:
+                description: Say to system that result will not be accessed by the user anymore (it is safe to release the resources connected with the result)
+                type: boolean
   
   responses:
     GetTablesResponse:

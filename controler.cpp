@@ -261,7 +261,6 @@ void getQueryResultHandler(const shared_ptr<Session> session) {
     log_info("handler getQueryResultHandler entered");
     const auto request = session->get_request();
     std::string queryIdStr = request->get_path_parameter("queryId");
-
     uint64_t queryId;
     if (!parseId(queryIdStr, queryId)) {
         log_info("handler getQueryResultHandler finished with status 404");
@@ -270,18 +269,45 @@ void getQueryResultHandler(const shared_ptr<Session> session) {
         return;
     }
 
-    optional<QueryResult> result = getQueryResult(queryIdStr);
-    if (!result.has_value()) {
-        log_info("handler getQueryResultHandler finished with status 404");
-        string error = "{\"error\":\"Query with this id not found\"}\n";
-        closeConnection(session, 404, error);
-        return;
-    }
+    int content_length = session->get_request()->get_header("Content-Length", 0);
+    session->fetch(content_length, [queryIdStr](const std::shared_ptr<restbed::Session> sess, const restbed::Bytes &body) {
+        std::string json_body(body.begin(), body.end());
+        int rowLimit = 0;
+        bool flushResult = false;
+        json parsed;
 
-    json response = json::array();
-    response.push_back(prepareQueryResultResponse(result.value()));
-    log_info("handler getQueryResultHandler finished with status 200");
-    closeConnection(session, 200, response.dump());
+        if (!json_body.empty()) {
+            if (parseJson(json_body, parsed)) {
+                if (parsed.contains("rowLimit") && parsed["rowLimit"].is_number_integer()) {
+                    rowLimit = parsed["rowLimit"].get<int>();
+                }
+                if (parsed.contains("flushResult") && parsed["flushResult"].is_boolean()) {
+                    flushResult = parsed["flushResult"].get<bool>();
+                }
+            } else {
+                closeConnection(sess, 400, parsed.dump());
+                return;
+            }
+        }
+
+        optional<QueryResult> result = getQueryResult(queryIdStr, rowLimit);
+        if (!result.has_value()) {
+            log_info("handler getQueryResultHandler finished with status 404");
+            string error = "{\"error\":\"Query with this id not found\"}\n";
+            closeConnection(sess, 404, error);
+            return;
+        }
+        QueryResult qr = result.value();
+        json response = json::array();
+        response.push_back(prepareQueryResultResponse(qr));
+        log_info("handler getQueryResultHandler finished with status 200");
+        closeConnection(sess, 200, response.dump());
+
+        if (flushResult) {
+            removeResult(queryIdStr);
+            log_info(std::string("handler getQueryResultHandler: flushed result for query ") + queryIdStr);
+        }
+    });
 }
 
 void getQueryErrorHandler(const shared_ptr<Session> session) {
