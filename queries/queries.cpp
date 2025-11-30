@@ -57,10 +57,10 @@ std::optional<QueryResponse> getQueryResponse(const std::string &id) {
 
         if (entry.contains("queryDefinition") && entry["queryDefinition"].is_object()) {
             const json &def = entry["queryDefinition"];
-            if (def.contains("CopyQuery") && def["CopyQuery"].is_object()) {
-                resp.query = jsonToCopyQuery(def["CopyQuery"]);
-            } else if (def.contains("SelectQuery") && def["SelectQuery"].is_object()) {
-                resp.query = jsonToSelectQuery(def["SelectQuery"]);
+            if (def.contains("sourceFilepath") || def.contains("destinationTableName")) {
+                resp.query = jsonToCopyQuery(def);
+            } else if (def.contains("tableName")) {
+                resp.query = jsonToSelectQuery(def);
             }
         }
 

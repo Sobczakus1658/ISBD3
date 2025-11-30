@@ -75,8 +75,9 @@ void getTableByIdHandler(const shared_ptr<Session> session) {
     uint64_t tableId;
     if (!parseId(tableIdStr, tableId)) {
         log_info("handler getTableByIdHandler finished with status 404");
-        string error = "{\"error\":\" tableId " + tableIdStr +  " is incorrect\"}\n";
-        closeConnection(session, 404, error);
+        json err = json::object();
+        err["message"] = std::string("tableId ") + tableIdStr + " is incorrect";
+        closeConnection(session, 404, err.dump());
         return;
     }
 
@@ -84,8 +85,9 @@ void getTableByIdHandler(const shared_ptr<Session> session) {
 
     if (!tableInfo.has_value()) {
         log_info("handler getTableByIdHandler finished with status 404");
-        string error = "{\"error\":\"Table with id " + tableIdStr +  "not found\"}\n";
-        closeConnection(session, 404, error);
+        json err = json::object();
+        err["message"] = std::string("Table with id ") + tableIdStr + " not found";
+        closeConnection(session, 404, err.dump());
         return;
     }
     log_info("handler getTableByIdHandler finished with status 200");
@@ -109,13 +111,21 @@ void createTableHandler(const shared_ptr<Session> session) {
                 return;
             }
 
-            CreateTableResult result = createTable(parsed);
+            json to_create = json::object();
+            std::vector<Problem> problems;
+            if (!validateCreateTableRequest(parsed, to_create, problems)) {
+                json resp = errorResponse(problems);
+                closeConnection(session, 400, resp.dump());
+                return;
+            }
+
+            CreateTableResult result = createTable(to_create);
 
             json response_json;
             int status = 200;
 
             if (result.problem.empty()) {
-                response_json["tableId"] = result.tableId;
+                response_json = result.tableId;
             } else {
                 response_json = errorResponse(result.problem);
                 status = 400;
@@ -134,16 +144,18 @@ void deleteTableHandler(const shared_ptr<Session> session) {
     uint64_t tableId;
     if (!parseId(tableIdStr, tableId)) {
         log_info("handler deleteTableHandler finished with status 404");
-        string error = "{\"error\":\" tableId " + tableIdStr +  " is incorrect\"}\n";
-        closeConnection(session, 404, error);
+        json err = json::object();
+        err["message"] = std::string("tableId ") + tableIdStr + " is incorrect";
+        closeConnection(session, 404, err.dump());
         return;
     }
 
     bool result = deleteTable(tableId);
     
     if (!result) {
-        string error = "{\"error\":\"Table with id " + tableIdStr +  "not found\"}\n";
-        closeConnection(session, 404, error);
+        json err = json::object();
+        err["message"] = std::string("Table with id ") + tableIdStr + " not found";
+        closeConnection(session, 404, err.dump());
         log_info("handler deleteTableHandler finished with status 404");
         return;
     }
@@ -153,7 +165,7 @@ void deleteTableHandler(const shared_ptr<Session> session) {
 
 void getQueriesHandler(const shared_ptr<Session> session) {
     log_info("handler getQueriesHandler entered");
-    closeConnection(session, 200,getQueries().dump() );
+    closeConnection(session, 200, getQueries().dump() );
 }
 
 void submitQueryHandler(const shared_ptr<Session> session) {
@@ -166,7 +178,6 @@ void submitQueryHandler(const shared_ptr<Session> session) {
             
             json json_message;
             if (!parseJson(json_body, json_message)) {
-                log_info("handler submitQueryHandler: invalid json");
                 closeConnection(session, 400, json_message.dump());
                 return;
             }
@@ -175,7 +186,8 @@ void submitQueryHandler(const shared_ptr<Session> session) {
 
             if (type == QueryType::ERROR) {
                 log_info("handler submitQueryHandler: Invalid QueryType");
-                closeConnection(session, 400, "Invalid QueryType");
+                json err = createErrorResponse("Invalid QueryType");
+                closeConnection(session, 400, err.dump());
                 return;
             }
 
@@ -190,7 +202,7 @@ void submitQueryHandler(const shared_ptr<Session> session) {
             switch(type) {
                 case QueryType::COPY: {
                     log_info("submitQuery handling COPY query");
-                    CopyQuery copyQuery = createCopyQuery(def["CopyQuery"]); 
+                    CopyQuery copyQuery = createCopyQuery(def); 
                     
                     addQueryDefinition(query_id, copyQuery);
                     QueryCreatedResponse response = copyCSV(copyQuery, query_id);
@@ -203,14 +215,12 @@ void submitQueryHandler(const shared_ptr<Session> session) {
                     }
                     log_info("submitQuery - copy finished with status 400");
                     string error = handleCsvError(query_id, response.status);
-
                     closeConnection(session, 400, error);
                     break;
                 } 
                 case QueryType::SELECT: {
-                    const auto &select_query = def["SelectQuery"];
                     SelectQuery sq;
-                    sq.tableName = select_query["tableName"];
+                    sq.tableName = def["tableName"];
                     addQueryDefinition(query_id, sq);
                     SELECT_TABLE_ERROR response = selectTable(sq, query_id);
 
@@ -222,7 +232,7 @@ void submitQueryHandler(const shared_ptr<Session> session) {
                     }
                     
                     changeStatus(query_id, QueryStatus::FAILED);
-                    string error = "Table " + select_query["tableName"].dump() + " does not exist" ;
+                    string error = "Table " + sq.tableName + " does not exist" ;
                     log_info("submitQuery - select finished with status 400");
                     closeConnection(session, 400, createErrorResponse(error).dump());
                 }
@@ -239,8 +249,9 @@ void getQueryHandler(const shared_ptr<Session> session) {
     uint64_t queryId;
     if (!parseId(queryIdStr, queryId)) {
         log_info("handler getQueryHandler finished with status 404");
-        string error = "{\"error\":\" queryId " + queryIdStr + " is incorrect\"}\n";
-        closeConnection(session, 404, error);
+        json err = json::object();
+        err["message"] = std::string("queryId ") + queryIdStr + " is incorrect";
+        closeConnection(session, 404, err.dump());
         return;
     }
 
@@ -248,8 +259,9 @@ void getQueryHandler(const shared_ptr<Session> session) {
 
     if (!result.has_value()) {
         log_info("handler getQueryHandler finished with status 404");
-        string error = "{\"error\":\"Query with this id not found\"}\n";
-        closeConnection(session, 404, error);
+        json err = json::object();
+        err["message"] = "Query with this id not found";
+        closeConnection(session, 404, err.dump());
         return;
     }
     json response = prepareQueryResponse(result.value());
@@ -264,7 +276,7 @@ void getQueryResultHandler(const shared_ptr<Session> session) {
     uint64_t queryId;
     if (!parseId(queryIdStr, queryId)) {
         log_info("handler getQueryResultHandler finished with status 404");
-        string error = "{\"error\":\" queryId " + queryIdStr + " is incorrect\"}\n";
+        string error = "{\"message\":\" queryId " + queryIdStr + " is incorrect\"}\n";
         closeConnection(session, 404, error);
         return;
     }
@@ -276,25 +288,27 @@ void getQueryResultHandler(const shared_ptr<Session> session) {
         bool flushResult = false;
         json parsed;
 
-        if (!json_body.empty()) {
-            if (parseJson(json_body, parsed)) {
-                if (parsed.contains("rowLimit") && parsed["rowLimit"].is_number_integer()) {
-                    rowLimit = parsed["rowLimit"].get<int>();
-                }
-                if (parsed.contains("flushResult") && parsed["flushResult"].is_boolean()) {
-                    flushResult = parsed["flushResult"].get<bool>();
-                }
-            } else {
-                closeConnection(sess, 400, parsed.dump());
-                return;
-            }
+        json parseErr;
+        if (!parseResultRequestBody(json_body, rowLimit, flushResult, parseErr)) {
+            closeConnection(sess, 404, parseErr.dump());
+            return;
+        }
+
+        optional<QueryResponse> qresp = getQueryResponse(queryIdStr);
+        if (!qresp.has_value()) {
+            log_info("handler getQueryResultHandler finished with status 404");
+            json err = json::object();
+            err["message"] = "Query with this id not found";
+            closeConnection(sess, 404, err.dump());
+            return;
         }
 
         optional<QueryResult> result = getQueryResult(queryIdStr, rowLimit);
         if (!result.has_value()) {
-            log_info("handler getQueryResultHandler finished with status 404");
-            string error = "{\"error\":\"Query with this id not found\"}\n";
-            closeConnection(sess, 404, error);
+            log_info("handler getQueryResultHandler finished with status 400");
+            json err = json::object();
+            err["message"] = "Result of this query is not available";
+            closeConnection(sess, 400, err.dump());
             return;
         }
         QueryResult qr = result.value();
@@ -318,19 +332,30 @@ void getQueryErrorHandler(const shared_ptr<Session> session) {
     uint64_t queryId;
     if (!parseId(queryIdStr, queryId)) {
         log_info("handler getQueryErrorHandler finished with status 404");
-        string error = "{\"error\":\" queryId " + queryIdStr + " is incorrect\"}\n";
-        closeConnection(session, 404, error);
+        json err = json::object();
+        err["message"] = std::string("queryId ") + queryIdStr + " is incorrect";
+        closeConnection(session, 404, err.dump());
+        return;
+    }
+
+    optional<QueryResponse> qresp = getQueryResponse(queryIdStr);
+    if (!qresp.has_value()) {
+        log_info("handler getQueryErrorHandler finished with status 404");
+        json err = json::object();
+        err["message"] = "Query with this id not found";
+        closeConnection(session, 404, err.dump());
         return;
     }
 
     optional<QueryError> result = getQueryError(queryIdStr);
-
     if (!result.has_value()) {
-        log_info("handler getQueryErrorHandler finished with status 404");
-        string error = "{\"error\":\"Query with this id not found\"}\n";
-        closeConnection(session, 404, error);
+        log_info("handler getQueryErrorHandler finished with status 400");
+        json err = json::object();
+        err["message"] = "Error for this query is not available";
+        closeConnection(session, 400, err.dump());
         return;
     }
+
     json response = prepareQueryErrorResponse(result.value());
     log_info("handler getQueryErrorHandler finished with status 200");
     closeConnection(session, 200, response.dump());
@@ -341,7 +366,7 @@ void getSystemHandler(const shared_ptr<Session> session) {
     closeConnection(session, 200, getSystemInfo().dump());
 }
 
-void setUpApi(){
+int main(){
 
     auto tablesResource = make_shared<Resource>();
     tablesResource->set_path("/tables");
@@ -381,7 +406,7 @@ void setUpApi(){
     systemResource->set_method_handler("GET", getSystemHandler);
 
     auto settings = make_shared<Settings>();
-    settings->set_port(8085);
+    settings->set_port(PORT);
     settings->set_bind_address("0.0.0.0");
     settings->set_default_header("Connection", "close");
 

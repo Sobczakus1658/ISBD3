@@ -113,13 +113,6 @@ CreateTableResult createTable(const json& json_info) {
         return result;
     }
 
-    if (!obj.contains("columns") || !obj["columns"].is_object()) {
-        Problem p; p.error = "Invalid or missing 'columns' definition for table";
-        problems.push_back(p);
-        result.problem = problems;
-        return result;
-    }
-
     vector<string> duplicates = findDuplicateColumns(obj["columns"]);
     if (!duplicates.empty()) {
         for (const auto &d : duplicates) {

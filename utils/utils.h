@@ -64,3 +64,7 @@ void saveFile(const std::filesystem::path &basePath, json results);
 void removeFiles(const std::string &Path, const std::vector<std::string> &file_names);
 
 vector<string> findDuplicateColumns(const json &cols);
+
+bool validateCreateTableRequest(const json &parsed, json &out_create, std::vector<Problem> &problems);
+
+bool parseResultRequestBody(const std::string &json_body, int &rowLimit, bool &flushResult, json &errorOrParsed);

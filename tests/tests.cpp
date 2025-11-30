@@ -9,7 +9,7 @@
 using namespace std;
 using json = nlohmann::ordered_json;
 
-static const std::string BASE_URL = "http://localhost:8085";
+static const std::string BASE_URL = "http://localhost:8086";
 
 void fail(const std::string &msg) {
     std::cerr << "FAIL: " << msg << std::endl;
@@ -31,9 +31,11 @@ vector<string> getTablesId(){
     if (r.status_code != 200) fail("getTablesId: GET /tables failed: " + r.text);
     json body = json::parse(r.text);
     vector<string> ids;
-    if (!body.is_object()) return ids;
-    for (auto it = body.begin(); it != body.end(); ++it) {
-        ids.push_back(it.value().get<std::string>());
+    if (!body.is_array()) return ids;
+    for (const auto &el : body) {
+        if (el.is_object() && el.contains("tableId") && el["tableId"].is_string()) {
+            ids.push_back(el["tableId"].get<std::string>());
+        }
     }
     return ids;
 }
@@ -49,7 +51,8 @@ void twoTimesCreateAndDeleteTable(){
     if (r2.status_code == 200) fail("twoTimesCreateAndDeleteTable: duplicate create unexpectedly succeeded");
 
     json created = json::parse(r1.text);
-    std::string tableId = created.value("tableId", std::string());
+    if (!created.is_string()) fail("twoTimesCreateAndDeleteTable: expected string TableID");
+    std::string tableId = created.get<std::string>();
 
     if (tableId.empty()) fail("twoTimesCreateAndDeleteTable: missing tableId");
     cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
@@ -67,16 +70,42 @@ void createTableAndCheckData(){
     if (r.status_code != 200) fail("createTableAndCheckData: create failed: " + r.text);
 
     json created = json::parse(r.text);
-    std::string tableId = created.value("tableId", std::string());
+    if (!created.is_string()) fail("createTableAndCheckData: expected string TableID");
+    std::string tableId = created.get<std::string>();
     if (tableId.empty()) fail("createTableAndCheckData: missing tableId");
 
     cpr::Response list = cpr::Get(cpr::Url{BASE_URL + "/tables"});
     if (list.status_code != 200) fail("createTableAndCheckData: GET /tables failed: " + list.text);
     json listj = json::parse(list.text);
-    if (!listj.contains(name)) fail("createTableAndCheckData: table name not in /tables");
+    if (!listj.is_array()) fail("createTableAndCheckData: /tables did not return an array");
+
+    for (const auto &el : listj) {
+        if (!el.is_object() || !el.contains("tableId") || !el["tableId"].is_string() || !el.contains("name") || !el["name"].is_string()) {
+            fail(std::string("createTableAndCheckData: /tables element has invalid shape: ") + el.dump());
+        }
+    }
+
+    bool found = false;
+    for (const auto &el : listj) {
+        if (el.value("name", std::string()) == name) { found = true; break; }
+    }
+    if (!found) fail("createTableAndCheckData: table name not in /tables");
 
     cpr::Response byid = cpr::Get(cpr::Url{BASE_URL + "/table/" + tableId});
     if (byid.status_code != 200) fail("createTableAndCheckData: GET /table/{id} failed: " + byid.text);
+    json byidj = json::parse(byid.text);
+
+    if (!byidj.is_object()) fail("createTableAndCheckData: GET /table/{id} did not return object: " + byid.text);
+
+    if (!byidj.contains("name") || !byidj["name"].is_string()) fail("createTableAndCheckData: /table missing name or not a string");
+    if (!byidj.contains("columns") || !byidj["columns"].is_array()) fail("createTableAndCheckData: /table missing columns array");
+    for (const auto &c : byidj["columns"]) {
+        if (!c.is_object() || !c.contains("name") || !c["name"].is_string() || !c.contains("type") || !c["type"].is_string()) {
+            fail(std::string("createTableAndCheckData: invalid column element: ") + c.dump());
+        }
+        std::string t = c["type"].get<std::string>();
+        if (t != "INT64" && t != "VARCHAR") fail(std::string("createTableAndCheckData: invalid column type: ") + t);
+    }
 
     if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
 }
@@ -107,6 +136,41 @@ void tryToCreateTableWithDuplicatesColumn(){
     std::string body = "{" + std::string("\"" + name + "\": { \"columns\": [ {\"name\": \"id\", \"type\": \"INT64\"}, {\"name\": \"id\", \"type\": \"VARCHAR\"} ] } }");
     cpr::Response r = cpr::Put(cpr::Url{BASE_URL + "/table"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{body});
     if (r.status_code == 200) fail("tryToCreateTableWithDuplicatesColumn: expected failure but create succeeded");
+}
+
+void tryToCreateTableMissingColumns(){
+    std::string body = "{ \"name\": \"missing_columns_test\" }";
+    cpr::Response r = cpr::Put(cpr::Url{BASE_URL + "/table"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{body});
+    if (r.status_code == 200) fail("tryToCreateTableMissingColumns: expected failure but create succeeded");
+    try {
+        json jb = json::parse(r.text);
+        if (!jb.is_object()) fail(std::string("tryToCreateTableMissingColumns: expected object error response: ") + r.text);
+        if (!jb.contains("problems") || !jb["problems"].is_array()) fail(std::string("tryToCreateTableMissingColumns: missing problems array: ") + r.text);
+        for (const auto &p : jb["problems"]) {
+            if (!p.is_object() || !p.contains("error") || !p["error"].is_string()) fail(std::string("tryToCreateTableMissingColumns: invalid problem element: ") + p.dump());
+            if (p.contains("context") && !p["context"].is_string()) fail(std::string("tryToCreateTableMissingColumns: problem.context not string: ") + p.dump());
+        }
+    } catch (const std::exception &ex) {
+        fail(std::string("tryToCreateTableMissingColumns: server returned non-json or invalid error response: ") + r.text);
+    }
+}
+
+void tryToCreateTableColumnEntryMissingType(){
+    std::string body = "{ \"name\": \"col_missing_type_test\", \"columns\": [ { \"name\": \"id\" } ] }";
+    cpr::Response r = cpr::Put(cpr::Url{BASE_URL + "/table"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{body});
+    if (r.status_code == 200) fail("tryToCreateTableColumnEntryMissingType: expected failure but create succeeded");
+    try {
+        json jb = json::parse(r.text);
+        if (!jb.is_object()) fail(std::string("tryToCreateTableColumnEntryMissingType: expected object error response: ") + r.text);
+        if (!jb.contains("problems") || !jb["problems"].is_array()) fail(std::string("tryToCreateTableColumnEntryMissingType: missing problems array: ") + r.text);
+        for (const auto &p : jb["problems"]) {
+            if (!p.is_object() || !p.contains("error") || !p["error"].is_string()) fail(std::string("tryToCreateTableColumnEntryMissingType: invalid problem element: ") + p.dump());
+            if (p.contains("context") && !p["context"].is_string()) fail(std::string("tryToCreateTableColumnEntryMissingType: problem.context not string: ") + p.dump());
+        }
+
+    } catch (const std::exception &ex) {
+        fail(std::string("tryToCreateTableColumnEntryMissingType: server returned non-json or invalid error response: ") + r.text);
+    }
 }
 
 void getSystem(){
@@ -153,8 +217,7 @@ void queryWithInvalidQueryDefinition() {
 
 void copyQueryWithoutNeccesaryFields() {
     json body = json::object();
-    body["queryDefinition"] = json::object();
-    body["queryDefinition"]["CopyQuery"] = json::object({{"destinationTableName", "no-table"}});
+    body["queryDefinition"] = json::object({{"destinationTableName", "no-table"}});
 
     cpr::Response r = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{body.dump()});
     if (r.status_code != 200) return;
@@ -180,8 +243,7 @@ void correctCopyQueryBasic(){
         out << "101\n202\n";
     }
     json copyReq = json::object();
-    copyReq["queryDefinition"] = json::object();
-    copyReq["queryDefinition"]["CopyQuery"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", false}});
+    copyReq["queryDefinition"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", false}});
     cpr::Response copyResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{copyReq.dump()});
     if (copyResp.status_code != 200) fail("correctCopyQueryBasic: submit failed: " + copyResp.text);
 
@@ -191,7 +253,8 @@ void correctCopyQueryBasic(){
     std::string status = pollQueryStatus(qid);
     if (status != "COMPLETED") fail("correctCopyQueryBasic: expected COMPLETED but got " + status);
 
-    std::string tableId = created.value("tableId", std::string());
+    if (!created.is_string()) fail("expected string TableID");
+    std::string tableId = created.get<std::string>();
     if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
 }
 
@@ -209,8 +272,7 @@ void correctCopyQueryHeaders(){
         out << "303\n404\n";
     }
     json copyReq = json::object();
-    copyReq["queryDefinition"] = json::object();
-    copyReq["queryDefinition"]["CopyQuery"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
+    copyReq["queryDefinition"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
     cpr::Response copyResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{copyReq.dump()});
     if (copyResp.status_code != 200) fail("correctCopyQueryHeaders: submit failed: " + copyResp.text);
 
@@ -219,7 +281,8 @@ void correctCopyQueryHeaders(){
     if (qid.empty()) fail("correctCopyQueryHeaders: missing queryId");
     std::string status = pollQueryStatus(qid);
     if (status != "COMPLETED") fail("correctCopyQueryHeaders: expected COMPLETED but got " + status);
-    std::string tableId = created.value("tableId", std::string());
+    if (!created.is_string()) fail("expected string TableID");
+    std::string tableId = created.get<std::string>();
     if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
 }
 
@@ -238,8 +301,7 @@ void correctCopyQueryDestinationColumns(){
         out << "y,22\n";
     }
     json copyReq = json::object();
-    copyReq["queryDefinition"] = json::object();
-    copyReq["queryDefinition"]["CopyQuery"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}, {"destinationColumns", json::array({"note","id"})}});
+    copyReq["queryDefinition"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}, {"destinationColumns", json::array({"note","id"})}});
     cpr::Response copyResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{copyReq.dump()});
     if (copyResp.status_code != 200) fail("correctCopyQueryDestinationColumns: submit failed: " + copyResp.text);
 
@@ -249,7 +311,8 @@ void correctCopyQueryDestinationColumns(){
     std::string status = pollQueryStatus(qid);
     if (status != "COMPLETED") fail("correctCopyQueryDestinationColumns: expected COMPLETED but got " + status);
 
-    std::string tableId = created.value("tableId", std::string());
+    if (!created.is_string()) fail("expected string TableID");
+    std::string tableId = created.get<std::string>();
     if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
 }
 
@@ -266,13 +329,13 @@ void invalidDataInCSVCopyQuery(){
         out << "not-a-number\n";
     }
     json copyReq = json::object();
-    copyReq["queryDefinition"] = json::object();
-    copyReq["queryDefinition"]["CopyQuery"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
+    copyReq["queryDefinition"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
     cpr::Response copyResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{copyReq.dump()});
     if (copyResp.status_code == 200) {
         fail(std::string("invalidDataInCSVCopyQuery: unexpected 200 status"));
     }
-    std::string tableId = created.value("tableId", std::string());
+    if (!created.is_string()) fail("expected string TableID");
+    std::string tableId = created.get<std::string>();
     if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
 }
 
@@ -289,12 +352,12 @@ void moreColumnsInCSVCopyQuery(){
         out << "1,2,3\n";
     }
     json copyReq = json::object();
-    copyReq["queryDefinition"] = json::object();
-    copyReq["queryDefinition"]["CopyQuery"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
+    copyReq["queryDefinition"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
     cpr::Response copyResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{copyReq.dump()});
     if (copyResp.status_code == 200) fail(std::string("moreColumnsInCSVCopyQuery: unexpected 200 status"));
 
-    std::string tableId = created.value("tableId", std::string());
+    if (!created.is_string()) fail("expected string TableID");
+    std::string tableId = created.get<std::string>();
     if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
     
 }
@@ -312,12 +375,12 @@ void lessColumnsInCSVCopyQuery(){
         out << "1,2\n";
     }
     json copyReq = json::object();
-    copyReq["queryDefinition"] = json::object();
-    copyReq["queryDefinition"]["CopyQuery"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
+    copyReq["queryDefinition"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
     cpr::Response copyResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{copyReq.dump()});
     if (copyResp.status_code == 200) fail(std::string("lessColumnsInCSVCopyQuery: unexpected 200 status"));
 
-    std::string tableId = created.value("tableId", std::string());
+    if (!created.is_string()) fail("expected string TableID");
+    std::string tableId = created.get<std::string>();
     if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
 }
 
@@ -329,8 +392,7 @@ void tableNotExistsCopyQuery(){
         out << "id\n1\n";
     }
     json copyReq = json::object();
-    copyReq["queryDefinition"] = json::object();
-    copyReq["queryDefinition"]["CopyQuery"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
+    copyReq["queryDefinition"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
     cpr::Response copyResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{copyReq.dump()});
     if (copyResp.status_code == 200) return;
 
@@ -351,12 +413,12 @@ void invalidPathCopyQuery(){
     std::string csvPath = "/tmp/does-not-exist-" + std::to_string(::time(nullptr)) + ".csv";
 
     json copyReq = json::object();
-    copyReq["queryDefinition"] = json::object();
-    copyReq["queryDefinition"]["CopyQuery"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
+    copyReq["queryDefinition"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
     cpr::Response copyResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{copyReq.dump()});
     if (copyResp.status_code == 200) return;
 
-    std::string tableId = created.value("tableId", std::string());
+    if (!created.is_string()) fail("expected string TableID");
+    std::string tableId = created.get<std::string>();
     if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
 }
 
@@ -373,8 +435,7 @@ void getQueryResultWithCorrectQueryId(){
         out << "777\n";
     }
     json copyReq = json::object();
-    copyReq["queryDefinition"] = json::object();
-    copyReq["queryDefinition"]["CopyQuery"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
+    copyReq["queryDefinition"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
     cpr::Response copyResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{copyReq.dump()});
     if (copyResp.status_code != 200) fail("getQueryResultWithCorrectQueryId: copy submit failed: " + copyResp.text);
     json copyCreated = json::parse(copyResp.text);
@@ -384,8 +445,7 @@ void getQueryResultWithCorrectQueryId(){
     if (copyStatus != "COMPLETED") fail("getQueryResultWithCorrectQueryId: copy did not complete: " + copyStatus);
 
     json selectReq = json::object();
-    selectReq["queryDefinition"] = json::object();
-    selectReq["queryDefinition"]["SelectQuery"] = json::object({{"tableName", tableName}});
+    selectReq["queryDefinition"] = json::object({{"tableName", tableName}});
     cpr::Response selectResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{selectReq.dump()});
     if (selectResp.status_code != 200) fail("getQueryResultWithCorrectQueryId: select submit failed: " + selectResp.text);
     json selectCreated = json::parse(selectResp.text);
@@ -398,8 +458,27 @@ void getQueryResultWithCorrectQueryId(){
     if (res.status_code != 200) fail("getQueryResultWithCorrectQueryId: GET /result failed: " + res.text);
     json results = json::parse(res.text);
     if (!results.is_array() || results.empty()) fail("getQueryResultWithCorrectQueryId: result missing or empty: " + res.text);
+    // Validate QueryResult shape: array of { rowCount: int, columns: [ array, ... ] }
+    for (const auto &elem : results) {
+        if (!elem.is_object()) fail(std::string("getQueryResultWithCorrectQueryId: result elem not object: ") + elem.dump());
+        if (!elem.contains("rowCount") || !elem["rowCount"].is_number_integer()) fail(std::string("getQueryResultWithCorrectQueryId: result missing rowCount or not int: ") + elem.dump());
+        if (!elem.contains("columns") || !elem["columns"].is_array()) fail(std::string("getQueryResultWithCorrectQueryId: result missing columns array: ") + elem.dump());
+        int rowCount = elem["rowCount"].get<int>();
+        for (const auto &col : elem["columns"]) {
+            if (!col.is_array()) fail(std::string("getQueryResultWithCorrectQueryId: column is not array: ") + col.dump());
+            if (rowCount > 0 && static_cast<int>(col.size()) != rowCount) {
+                fail(std::string("getQueryResultWithCorrectQueryId: column length != rowCount: ") + col.dump());
+            }
+            for (const auto &cell : col) {
+                if (!(cell.is_number_integer() || cell.is_string())) {
+                    fail(std::string("getQueryResultWithCorrectQueryId: column cell has invalid type: ") + cell.dump());
+                }
+            }
+        }
+    }
 
-    std::string tableId = created.value("tableId", std::string());
+    if (!created.is_string()) fail("expected string TableID");
+    std::string tableId = created.get<std::string>();
     if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
 }
 
@@ -423,8 +502,7 @@ void getQueryErrorWithCorrectQueryId(){
         out << "bad-int\n";
     }
     json copyReq = json::object();
-    copyReq["queryDefinition"] = json::object();
-    copyReq["queryDefinition"]["CopyQuery"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
+    copyReq["queryDefinition"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
     cpr::Response copyResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{copyReq.dump()});
     std::string qid;
     if (copyResp.status_code != 200) {
@@ -461,12 +539,14 @@ void getQueryErrorWithCorrectQueryId(){
     cpr::Response er = cpr::Get(cpr::Url{BASE_URL + "/error/" + qid}, cpr::Header{{"Accept","application/json"}});
     if (er.status_code != 200) fail("getQueryErrorWithCorrectQueryId: GET /error failed: " + er.text);
     json errj = json::parse(er.text);
-    if (errj.is_object()) {
-        if (!errj.contains("problems")) fail("getQueryErrorWithCorrectQueryId: error body missing problems");
-    } else if (!errj.is_array()) {
-        fail("getQueryErrorWithCorrectQueryId: unexpected error shape: " + er.text);
+    if (!errj.is_object()) fail(std::string("getQueryErrorWithCorrectQueryId: expected object for /error response: ") + errj.dump());
+    if (!errj.contains("problems") || !errj["problems"].is_array()) fail(std::string("getQueryErrorWithCorrectQueryId: /error missing problems array: ") + errj.dump());
+    for (const auto &p : errj["problems"]) {
+        if (!p.is_object() || !p.contains("error") || !p["error"].is_string()) fail(std::string("getQueryErrorWithCorrectQueryId: problem element invalid: ") + p.dump());
+        if (p.contains("context") && !p["context"].is_string()) fail(std::string("getQueryErrorWithCorrectQueryId: problem.context not string: ") + p.dump());
     }
-    std::string tableId = created.value("tableId", std::string());
+    if (!created.is_string()) fail("expected string TableID");
+    std::string tableId = created.get<std::string>();
     if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
 }
 
@@ -492,6 +572,38 @@ void getQueryByInvalidID(){
     if (r.status_code == 200) fail("getQueryByInvalidID: expected non-200 for invalid query id");
 }
 
+void checkQueryResponseShape(){
+    std::string tableName = "qshape_" + std::to_string(::time(nullptr));
+    std::string createBody = "{" + std::string("\"" + tableName + "\": { \"columns\": { \"id\": \"INT64\" } } }");
+    cpr::Response r = cpr::Put(cpr::Url{BASE_URL + "/table"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{createBody});
+    if (r.status_code != 200) fail("checkQueryResponseShape: create table failed: " + r.text);
+    json created = json::parse(r.text);
+    if (!created.is_string()) fail("checkQueryResponseShape: expected string TableID");
+
+
+    json selectReq = json::object();
+    selectReq["queryDefinition"] = json::object({{"tableName", tableName}});
+    cpr::Response qresp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{selectReq.dump()});
+    if (qresp.status_code != 200) fail("checkQueryResponseShape: submit select failed: " + qresp.text);
+    json qcreated = json::parse(qresp.text);
+    std::string qid = qcreated.value("queryId", std::string());
+    if (qid.empty()) fail("checkQueryResponseShape: missing queryId");
+
+
+    cpr::Response greq = cpr::Get(cpr::Url{BASE_URL + "/query/" + qid}, cpr::Header{{"Accept","application/json"}});
+    if (greq.status_code != 200) fail("checkQueryResponseShape: GET /query/{id} failed: " + greq.text);
+    json gj = json::parse(greq.text);
+    if (!gj.is_object()) fail(std::string("checkQueryResponseShape: expected object from /query: ") + gj.dump());
+    if (!gj.contains("queryId") || !gj["queryId"].is_string()) fail("checkQueryResponseShape: missing queryId or not a string");
+    if (!gj.contains("status") || !gj["status"].is_string()) fail("checkQueryResponseShape: missing status or not a string");
+    if (!gj.contains("isResultAvailable") || !gj["isResultAvailable"].is_boolean()) fail("checkQueryResponseShape: missing isResultAvailable or not a boolean");
+    if (!gj.contains("queryDefinition") || !gj["queryDefinition"].is_object()) fail("checkQueryResponseShape: missing queryDefinition object");
+
+    const json &def = gj["queryDefinition"];
+    std::string tableId = created.get<std::string>();
+    if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
+}
+
 int main() {
 
 
@@ -515,6 +627,15 @@ int main() {
 
     std::cout << "[test-runner] tryToCreateTableWithDuplicatesColumn()" << std::endl;
     tryToCreateTableWithDuplicatesColumn();
+
+    std::cout << "[test-runner] tryToCreateTableMissingColumns()" << std::endl;
+    tryToCreateTableMissingColumns();
+
+    std::cout << "[test-runner] tryToCreateTableColumnEntryMissingType()" << std::endl;
+    tryToCreateTableColumnEntryMissingType();
+
+    std::cout << "[test-runner] checkQueryResponseShape()" << std::endl;
+    checkQueryResponseShape();
 
     std::cout << "[test-runner] getQuieriesId() -> count:" << getQuieriesId().size() << std::endl;
 

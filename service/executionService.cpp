@@ -5,6 +5,7 @@
 #include <csv.hpp>
 #include <random>
 #include <iostream>
+#include "../utils/utils.h"
 
 
 namespace fs = std::filesystem;
@@ -51,6 +52,7 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
     std::vector<std::string> colTypes;
     std::string path = get_path(info);
     std::vector<std::string> fileNames;
+    size_t files_reported = 0;
 
     colTypes.reserve(info.info.size());
 

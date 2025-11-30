@@ -14,8 +14,8 @@ LDFLAGS = -L zstd/lib -lssl -lcrypto -lboost_system -lpthread -lzstd
 
 TARGET = main
 
-# Źródła aplikacji
-SRC = main.cpp \
+SRC = \
+      controler.cpp \
       codec/codec_int.cpp \
       codec/codec_string.cpp \
       serialization/serializator.cpp \
@@ -26,7 +26,6 @@ SRC = main.cpp \
       metastore/metastore.cpp \
       queries/queries.cpp \
       results/results.cpp \
-      controler.cpp \
       errors/errors.cpp \
       utils/utils.cpp
 

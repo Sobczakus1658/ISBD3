@@ -39,24 +39,26 @@ json getSystemInfo() {
 }
 
 string prepareTablesInfo(const map<uint64_t, string>& tables) {
-    json response_json = json::object();
+    json response_json = json::array();
     for (const auto& [id, name] : tables) {
-        response_json[name] = std::to_string(id);
+        json e = json::object();
+        e["tableId"] = std::to_string(id);
+        e["name"] = name;
+        response_json.push_back(std::move(e));
     }
     return response_json.dump();
 }
 
 string prepareTableInfo(TableInfo& tableInfo){
     json response_json;
-
-    response_json["id"] = tableInfo.id;
+    response_json = json::object();
     response_json["name"] = tableInfo.name;
-    response_json["info"] = json::array();
+    response_json["columns"] = json::array();
     for (const auto &col : tableInfo.info) {
         json colobj;
         colobj["name"] = col.first;
         colobj["type"] = col.second;
-        response_json["info"].push_back(colobj);
+        response_json["columns"].push_back(colobj);
     }
     return response_json.dump();
 }
@@ -81,21 +83,9 @@ json prepareQueryResponse(const QueryResponse &response) {
 
     json_info["queryId"] = response.queryId;
     json_info["status"] = statusToString(response.status);
+    json def = buildQueryDefinition(response.query);
     json_info["isResultAvailable"] = response.isResultAvailable;
-
-    if (auto pc = std::get_if<CopyQuery>(&response.query)) {
-        json copy_query = json::object();
-        copy_query["sourceFilepath"] = pc->path;
-        copy_query["destinationTableName"] = pc->destinationTableName;
-        copy_query["doesCsvContainHeader"] = pc->doesCsvContainHeader;
-        copy_query["destinationColumns"] = json::array();
-        for (const auto &c : pc->destinationColumns) copy_query["destinationColumns"].push_back(c);
-        json_info["CopyQuery"] = std::move(copy_query);
-    } else if (auto ps = std::get_if<SelectQuery>(&response.query)) {
-        json select_query = json::object();
-        select_query["tableName"] = ps->tableName;
-        json_info["SelectQuery"] = std::move(select_query);
-    }
+    json_info["queryDefinition"] = def;
 
     return json_info;
 }
@@ -181,28 +171,17 @@ string handleCsvError(const std::string &query_id, CSV_TABLE_ERROR code) {
 }
 
 QueryType recogniseQuery(const json &query) {
-    const json *def = &query;
-    if (query.is_object() && query.contains("queryDefinition"))
-        def = &query["queryDefinition"];
+    if (!query.is_object() || !query.contains("queryDefinition")) return QueryType::ERROR;
+    const json &def = query["queryDefinition"];
+    if (!def.is_object()) return QueryType::ERROR;
 
-    if (!def->is_object())
-        return QueryType::ERROR;
-
-    if (def->contains("CopyQuery") && (*def)["CopyQuery"].is_object()) {
-        const auto &cq = (*def)["CopyQuery"];
-        if (cq.contains("sourceFilepath") && cq.contains("destinationTableName") &&
-            cq["sourceFilepath"].is_string() && cq["destinationTableName"].is_string()) {
-            return QueryType::COPY;
-        }
-        return QueryType::ERROR;
+    if (def.contains("sourceFilepath") && def.contains("destinationTableName")
+        && def["sourceFilepath"].is_string() && def["destinationTableName"].is_string()) {
+        return QueryType::COPY;
     }
-    
-    if (def->contains("SelectQuery") && (*def)["SelectQuery"].is_object()) {
-        const auto &cq = (*def)["SelectQuery"];
-        if (cq.contains("tableName") && cq["tableName"].is_string()) {
-            return QueryType::SELECT;
-        }
-        return QueryType::ERROR;
+
+    if (def.contains("tableName") && def["tableName"].is_string()) {
+        return QueryType::SELECT;
     }
 
     return QueryType::ERROR;
@@ -251,14 +230,10 @@ json selectQueryToJson(const SelectQuery &q) {
 
 json buildQueryDefinition(const QueryToJson &q) {
     if (auto pc = std::get_if<CopyQuery>(&q)) {
-        json def = json::object();
-        def["CopyQuery"] = copyQueryToJson(*pc);
-        return def;
+        return copyQueryToJson(*pc);
     }
     if (auto ps = std::get_if<SelectQuery>(&q)) {
-        json def = json::object();
-        def["SelectQuery"] = selectQueryToJson(*ps);
-        return def;
+        return selectQueryToJson(*ps);
     }
     return json::object();
 }
@@ -296,6 +271,67 @@ void saveFile(const std::filesystem::path &basePath, json results) {
     std::ofstream outFile(basePath);
     outFile << std::setw(2) << results << std::endl;
     outFile.close();
+}
+
+bool validateCreateTableRequest(const json &parsed, json &out_create, std::vector<Problem> &problems) {
+    out_create = json::object();
+
+    if (parsed.is_object() && parsed.contains("name") && parsed.contains("columns") && parsed["name"].is_string() && parsed["columns"].is_array()) {
+        std::string tname = parsed["name"].get<std::string>();
+        json columns_obj = json::object();
+        for (const auto &col : parsed["columns"]) {
+            if (!col.is_object() || !col.contains("name") || !col.contains("type") || !col["name"].is_string() || !col["type"].is_string()) {
+                Problem p; p.error = "Invalid column definition";
+                problems.push_back(p);
+                continue;
+            }
+            std::string cname = col["name"].get<std::string>();
+            std::string ctype = col["type"].get<std::string>();
+            columns_obj[cname] = ctype;
+        }
+        if (!problems.empty()) return false;
+        json inner = json::object();
+        inner["columns"] = columns_obj;
+        out_create[tname] = inner;
+        return true;
+    }
+
+    if (parsed.is_object()) {
+        auto it = parsed.begin();
+        if (it != parsed.end() && it.value().is_object() && it.value().contains("columns") && it.value()["columns"].is_object()) {
+            out_create = parsed;
+            return true;
+        }
+        Problem p; p.error = "Missing required fields: name and columns";
+        problems.push_back(p);
+        return false;
+    }
+
+    Problem p; p.error = "Invalid create table request";
+    problems.push_back(p);
+    return false;
+}
+
+bool parseResultRequestBody(const std::string &json_body, int &rowLimit, bool &flushResult, json &errorOrParsed) {
+    if (json_body.empty()) return true;
+
+    try {
+        json parsed = json::parse(json_body);
+        if (parsed.contains("rowLimit") && parsed["rowLimit"].is_number_integer()) {
+            rowLimit = parsed["rowLimit"].get<int>();
+        }
+        if (parsed.contains("flushResult") && parsed["flushResult"].is_boolean()) {
+            flushResult = parsed["flushResult"].get<bool>();
+        }
+        return true;
+    } catch (const std::exception &e) {
+        std::string err = std::string("JSON parse error: ") + e.what();
+        json error = json::object();
+        error["problems"] = json::array();
+        error["problems"].push_back({ {"error", err}, {"context", json_body} });
+        errorOrParsed = error;
+        return false;
+    }
 }
 
 void removeFiles(const std::string &Path, const std::vector<std::string> &file_names){ 
