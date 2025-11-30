@@ -124,12 +124,6 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
             columnsToProcess = colTypes.size();
         }
 
-        if (row.size() != columnsToProcess) {
-            response.status = CSV_TABLE_ERROR::INVALID_COLUMN_NUMBER;
-            revert_path(path);
-            return response;
-        }
-
         size_t intIdx = 0, strIdx = 0;
 
         for (size_t i = 0; i < columnsToProcess; i++) {

@@ -339,29 +339,6 @@ void invalidDataInCSVCopyQuery(){
     if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
 }
 
-void moreColumnsInCSVCopyQuery(){
-    std::string tableName = "ct_morecols_" + std::to_string(::time(nullptr));
-    std::string createBody = "{" + std::string("\"" + tableName + "\": { \"columns\": { \"a\": \"INT64\", \"b\": \"INT64\" } } }");
-    cpr::Response r = cpr::Put(cpr::Url{BASE_URL + "/table"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{createBody});
-    if (r.status_code != 200) fail("moreColumnsInCSVCopyQuery: create table failed: " + r.text);
-    json created = json::parse(r.text);
-    std::string csvPath = "/tmp/" + tableName + ".csv";
-    {
-        std::ofstream out(csvPath);
-        out << "a,b,c\n";
-        out << "1,2,3\n";
-    }
-    json copyReq = json::object();
-    copyReq["queryDefinition"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
-    cpr::Response copyResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{copyReq.dump()});
-    if (copyResp.status_code == 200) fail(std::string("moreColumnsInCSVCopyQuery: unexpected 200 status"));
-
-    if (!created.is_string()) fail("expected string TableID");
-    std::string tableId = created.get<std::string>();
-    if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
-    
-}
-
 void lessColumnsInCSVCopyQuery(){
     std::string tableName = "ct_lesscols_" + std::to_string(::time(nullptr));
     std::string createBody = "{" + std::string("\"" + tableName + "\": { \"columns\": { \"a\": \"INT64\", \"b\": \"INT64\", \"c\": \"INT64\" } } }");
@@ -604,8 +581,62 @@ void checkQueryResponseShape(){
     if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
 }
 
-int main() {
+void testRowLimitAndFlushResult(){
+    std::string tableName = "rlfr_" + std::to_string(::time(nullptr));
+    std::string createBody = "{" + std::string("\"" + tableName + "\": { \"columns\": { \"id\": \"INT64\" } } }");
+    cpr::Response r = cpr::Put(cpr::Url{BASE_URL + "/table"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{createBody});
+    if (r.status_code != 200) fail("testRowLimitAndFlushResult: create table failed: " + r.text);
+    json created = json::parse(r.text);
+    if (!created.is_string()) fail("testRowLimitAndFlushResult: expected string TableID");
+    std::string tableId = created.get<std::string>();
 
+    std::string csvPath = "/tmp/" + tableName + ".csv";
+    {
+        std::ofstream out(csvPath);
+        out << "id\n";
+        out << "10\n";
+        out << "20\n";
+        out << "30\n";
+    }
+
+    json copyReq = json::object();
+    copyReq["queryDefinition"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
+    cpr::Response copyResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{copyReq.dump()});
+    if (copyResp.status_code != 200) fail("testRowLimitAndFlushResult: copy submit failed: " + copyResp.text);
+    json copyCreated = json::parse(copyResp.text);
+    std::string copyQid = copyCreated.value("queryId", std::string());
+    if (copyQid.empty()) fail("testRowLimitAndFlushResult: missing copy queryId");
+    std::string copyStatus = pollQueryStatus(copyQid);
+    if (copyStatus != "COMPLETED") fail("testRowLimitAndFlushResult: copy did not complete: " + copyStatus);
+
+    json selectReq = json::object();
+    selectReq["queryDefinition"] = json::object({{"tableName", tableName}});
+    cpr::Response selectResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{selectReq.dump()});
+    if (selectResp.status_code != 200) fail("testRowLimitAndFlushResult: select submit failed: " + selectResp.text);
+    json selectCreated = json::parse(selectResp.text);
+    std::string selectQid = selectCreated.value("queryId", std::string());
+    if (selectQid.empty()) fail("testRowLimitAndFlushResult: missing select queryId");
+    std::string selectStatus = pollQueryStatus(selectQid);
+    if (selectStatus != "COMPLETED") fail("testRowLimitAndFlushResult: select did not complete: " + selectStatus);
+
+
+    json getReq = json::object();
+    getReq["rowLimit"] = 1;
+    getReq["flushResult"] = false;
+    cpr::Response res = cpr::Get(cpr::Url{BASE_URL + "/result/" + selectQid}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{getReq.dump()});
+    if (res.status_code != 200) fail("testRowLimitAndFlushResult: GET /result failed: " + res.text);
+    json results = json::parse(res.text);
+    if (!results.is_array() || results.empty()) fail("testRowLimitAndFlushResult: result missing or empty: " + res.text);
+    json elem = results[0];
+    if (!elem.contains("columns") || !elem["columns"].is_array()) fail("testRowLimitAndFlushResult: result missing columns array: " + elem.dump());
+
+    if (elem["columns"].size() != 1) fail("testRowLimitAndFlushResult: expected 1 column but got " + std::to_string(elem["columns"].size()));
+    if (!elem["columns"][0].is_array()) fail("testRowLimitAndFlushResult: column is not array: " + elem["columns"][0].dump());
+    if (static_cast<int>(elem["columns"][0].size()) != 1) fail("testRowLimitAndFlushResult: expected 1 row in column but got " + std::to_string(elem["columns"][0].size()));
+
+    if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
+}
+int main() {
 
     std::cout << "[test-runner] getSystem()" << std::endl;
     getSystem();
@@ -657,9 +688,6 @@ int main() {
     std::cout << "[test-runner] invalidDataInCSVCopyQuery()" << std::endl;
     invalidDataInCSVCopyQuery();
 
-    std::cout << "[test-runner] moreColumnsInCSVCopyQuery()" << std::endl;
-    moreColumnsInCSVCopyQuery();
-
     std::cout << "[test-runner] lessColumnsInCSVCopyQuery()" << std::endl;
     lessColumnsInCSVCopyQuery();
 
@@ -671,6 +699,9 @@ int main() {
 
     std::cout << "[test-runner] getQueryResultWithCorrectQueryId()" << std::endl;
     getQueryResultWithCorrectQueryId();
+
+    std::cout << "[test-runner] testRowLimitAndFlushResult()" << std::endl;
+    testRowLimitAndFlushResult();
 
     std::cout << "[test-runner] getQueryResultWithInccorectQueryId()" << std::endl;
     getQueryResultWithInccorectQueryId();

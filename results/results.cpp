@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <iostream>
+#include <algorithm>
 
 using json = nlohmann::ordered_json;
 static const filesystem::path basePath =  filesystem::current_path() / "results/results.json";
@@ -42,7 +43,9 @@ std::optional<QueryResult> getQueryResult(const std::string &id, int rowLimit){
                     result.columns.push_back(std::move(vec));
                 } else {
                     std::vector<int64_t> vec;
-                    for (const auto &v : col) {
+                    int take = std::min((int)col.size(), to_take);
+                    for (int i = 0; i < take; ++i) {
+                        const auto &v = col[i];
                         vec.push_back(v.get<int64_t>());
                     }
                     result.columns.push_back(std::move(vec));
