@@ -16,6 +16,13 @@ static const filesystem::path basePath =  filesystem::current_path() / "metastor
 
 std::optional<TableInfo> getTableInfoByName(const std::string& name) {
     json meta = readLocalFile(basePath);
+    // normalize missing or legacy file: ensure meta is an object with "tables"
+    if (!meta.is_object()) {
+        meta = json::object();
+        meta["tables"] = json::object();
+    } else if (!meta.contains("tables") || !meta["tables"].is_object()) {
+        meta["tables"] = json::object();
+    }
     for (auto &kv : meta["tables"].items()) {
         if (kv.key() == name){
             const json &obj = kv.value();
@@ -62,6 +69,12 @@ std::optional<TableInfo> getTableInfo(uint64_t id) {
 map<uint64_t, string> getTables(){
     map<uint64_t, string> names;
     json meta = readLocalFile(basePath);
+    if (!meta.is_object()) {
+        meta = json::object();
+        meta["tables"] = json::object();
+    } else if (!meta.contains("tables") || !meta["tables"].is_object()) {
+        meta["tables"] = json::object();
+    }
     for (auto &kv : meta["tables"].items()) {
         const std::string table_name = kv.key();
         const json &obj = kv.value();
@@ -78,6 +91,12 @@ bool deleteTable(uint64_t id) {
     const std::string name = it->second;
 
     json meta = readLocalFile(basePath);
+    if (!meta.is_object()) {
+        meta = json::object();
+        meta["tables"] = json::object();
+    } else if (!meta.contains("tables") || !meta["tables"].is_object()) {
+        meta["tables"] = json::object();
+    }
     if (!meta["tables"].contains(name)) return false;
 
     const json &obj = meta["tables"][name];
@@ -105,6 +124,12 @@ CreateTableResult createTable(const json& json_info) {
     const json &obj = it.value();
 
     json meta = readLocalFile(basePath);
+    if (!meta.is_object()) {
+        meta = json::object();
+        meta["tables"] = json::object();
+    } else if (!meta.contains("tables") || !meta["tables"].is_object()) {
+        meta["tables"] = json::object();
+    }
 
     if (meta["tables"].contains(table_name)) {
         Problem p; p.error = "Table with name " + table_name + " already exists !";
@@ -160,6 +185,12 @@ CreateTableResult createTable(const json& json_info) {
 void addLocationAndFiles(uint64_t id, const std::string &location, const std::vector<std::string> &files) {
 
     json data = readLocalFile(basePath);
+    if (!data.is_object()) {
+        data = json::object();
+        data["tables"] = json::object();
+    } else if (!data.contains("tables") || !data["tables"].is_object()) {
+        data["tables"] = json::object();
+    }
     std::map<uint64_t, std::string> tables = getTables();
     auto it = tables.find(id);
     if (it == tables.end()) return;
