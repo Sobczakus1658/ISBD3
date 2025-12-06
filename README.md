@@ -13,7 +13,7 @@ Następnie należy zbudowac obraz dockera (powinno potrwac koło 5 minut) :
 
 a następnie urochmić aplikację w dockerze :
 
-`docker run -d -p 8086:8086 --name isbd-container isbd`
+`./run_docker.sh`
 
 Testy znajdują się w folderze tests, najpierw nalezy wykonać:
 
