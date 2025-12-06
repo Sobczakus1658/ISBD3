@@ -1,6 +1,6 @@
 CXX = g++
-CXXFLAGS = -std=c++20 -I..  -I../cpp-client -I../restbed-old/source -I../csv-parser/include -I/usr/include -g
-LDFLAGS =  -lssl -lcrypto -lboost_system -lpthread -lcpr -lcurl
+CXXFLAGS = -std=c++20 
+LDFLAGS =  -lcpr
 
 TEST_SRC = tests.cpp
 TEST_OBJ = $(TEST_SRC:.cpp=.o)
