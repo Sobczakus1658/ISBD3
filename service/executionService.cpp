@@ -91,7 +91,7 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
     
     bool send = false;
 
-    std::vector<int> csvToTable; 
+    std::vector<std::pair<int,int>> csvToTable;
 
     if (!q.destinationColumns.empty()) {
 
@@ -100,45 +100,67 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
             tableNameToIndex[info.info[i].first] = i;
         }
 
+        std::unordered_map<std::string, int> headerNameToIndex;
+        if (q.doesCsvContainHeader) {
+            auto col_names = reader.get_col_names();
+            for (size_t i = 0; i < col_names.size(); ++i) headerNameToIndex[col_names[i]] = (int)i;
+        }
+
+        int implicitCsvIdx = 0;
         for (const auto &colName : q.destinationColumns) {
             if (tableNameToIndex.find(colName) == tableNameToIndex.end()) {
                 response.status = CSV_TABLE_ERROR::INVALID_DESTINATION_COLUMN;
                 revert_path(path);
                 return response;
             }
-            csvToTable.push_back(tableNameToIndex[colName]);
+            int tableIdx = tableNameToIndex[colName];
+
+            int csvIdx = -1;
+            if (q.doesCsvContainHeader) {
+                if (headerNameToIndex.find(colName) == headerNameToIndex.end()) {
+                    response.status = CSV_TABLE_ERROR::INVALID_DESTINATION_COLUMN;
+                    revert_path(path);
+                    return response;
+                }
+                csvIdx = headerNameToIndex[colName];
+            } else {
+                csvIdx = implicitCsvIdx++;
+            }
+
+            csvToTable.push_back({csvIdx, tableIdx});
         }
 
     } else {
         for (size_t i = 0; i < colTypes.size(); i++) {
-            csvToTable.push_back(i);
+            csvToTable.push_back({(int)i, (int)i});
         }
     }
 
     for (csv::CSVRow& row : reader) {
 
-        size_t columnsToProcess = 0;
-        if (!q.destinationColumns.empty()) {
-            columnsToProcess = csvToTable.size();
-        } else {
-            columnsToProcess = colTypes.size();
-        }
+        size_t columnsToProcess = csvToTable.size();
 
         size_t intIdx = 0, strIdx = 0;
 
         for (size_t i = 0; i < columnsToProcess; i++) {
-            int tbl_i = csvToTable[i];
+            int csv_i = csvToTable[i].first;
+            int tbl_i = csvToTable[i].second;
             const auto &colType = colTypes[tbl_i];
             try {
+                if (csv_i < 0 || (size_t)csv_i >= row.size()) {
+                    response.status = CSV_TABLE_ERROR::INVALID_TYPE;
+                    revert_path(path);
+                    return response;
+                }
                 if (colType == "INT64") {
-                    auto val = row[i].get<std::int64_t>();
+                    auto val = row[csv_i].get<std::int64_t>();
                     batch.intColumns[intIdx].column.push_back(val);
                     intIdx++;
                 } else {
-                    auto sval = row[i].get<std::string>();
+                    auto sval = row[csv_i].get<std::string>();
                     batch.stringColumns[strIdx].column.push_back(sval);
                     strIdx++;
-                } 
+                }
             } catch (const std::exception &e) {
                 response.status = CSV_TABLE_ERROR::INVALID_TYPE;
                 revert_path(path);

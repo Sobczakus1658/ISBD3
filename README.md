@@ -1,4 +1,33 @@
-# Uruchomienie programu
+# Projekt numer 2
+
+# Uruchomienie programu 
+Aby poprawnie uruchomić projekt, należy pobrać repozytorium wraz z jego podmodułami (biblioteką `zstd`, wykorzystywaną do kompresji napisów, `cpp-restbed-server` do korzystania z REST-API oraz `csv-parser` do parsowania plików csv)
+
+UWAGA: wykonanie tej komendy może potrwać nawet kilka minut !
+
+`git submodule update --init --recursive`
+
+Następnie należy zbudowac obraz dockera (powinno potrwac koło 5 minut) :
+
+`docker build -t isbd . `
+
+a następnie urochmić aplikację w dockerze :
+
+`docker run -d -p 8086:8086 --name isbd-container isbd`
+
+Testy znajdują się w folderze tests, najpierw nalezy wykonać:
+
+`cd tests `
+`make`
+
+a następnie je urochomić komendą:
+
+`.\run_tests`
+
+# Projekt numer 1  
+Poniżej znajduje się opis uruchomienia i działania pierwszej części projektu. W tej części należało zaimplementować format pliku do przechowywania danych, napisać serializator i deserializator umożliwiające zapis i odczyt danych w tym formacie oraz skompresować je przed zapisem. Wartości liczbowe zostały skompresowane przy użyciu metody Delta Int Encoding połączonej z Variable Length Int Encoding. Skorzystałem z biblioteki zstd do kompresji napisów. 
+
+# Uruchomienie programu 
 Aby poprawnie uruchomić projekt, należy pobrać repozytorium wraz z jego podmodułami (biblioteką `zstd`, wykorzystywaną do kompresji napisów): 
 
 `git submodule update --init --recursive`
@@ -127,19 +156,3 @@ Na końcu testów uruchamiana jest funkcja, usuwająca wszystkie pliki powstałe
 
 ## Plik 
 W folderze `\example` znajduje się przykładowy plik, z którego będziemy deserializować dane.
-
-## Komendy, które wykonałem 
-sudo apt install libboost-all-dev
-sudo apt install libasio-dev
-git clone https://github.com/catchorg/Catch2.git
-cd Catch2
-git checkout v3.4.0  # przykładowa wersja 3.x
-cmake -Bbuild -H. -DBUILD_TESTING=OFF
-sudo cmake --install build
-sudo apt install libfmt-dev
-sudo apt install -y nlohmann-json3-dev
-
-sudo apt install libgtest-dev
-sudo apt install cmake
- sudo apt update && sudo apt install -y build-essential cmake pkg-config libcurl4-openssl-dev git
-
