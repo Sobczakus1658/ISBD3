@@ -5,11 +5,12 @@
 #include <thread>
 #include <chrono>
 #include <vector>
+#include <filesystem>
 
 using namespace std;
 using json = nlohmann::ordered_json;
 
-static const std::string BASE_URL = "http://localhost:8086";
+static const std::string BASE_URL = "http://localhost:8090";
 
 void fail(const std::string &msg) {
     std::cerr << "FAIL: " << msg << std::endl;
@@ -265,7 +266,7 @@ void correctCopyQueryHeaders(){
     if (r.status_code != 200) fail("correctCopyQueryHeaders: create table failed: " + r.text);
 
     json created = json::parse(r.text);
-    std::string csvPath = "/data/" + tableName + ".csv";
+    std::string csvPath = std::string("../data/") + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "id\n";
@@ -293,7 +294,7 @@ void correctCopyQueryDestinationColumns(){
     if (r.status_code != 200) fail("correctCopyQueryDestinationColumns: create table failed: " + r.text);
 
     json created = json::parse(r.text);
-    std::string csvPath = "/data/" + tableName + ".csv";
+    std::string csvPath = std::string("../data/") + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "note,id\n";
@@ -322,7 +323,7 @@ void invalidDataInCSVCopyQuery(){
     cpr::Response r = cpr::Put(cpr::Url{BASE_URL + "/table"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{createBody});
     if (r.status_code != 200) fail("invalidDataInCSVCopyQuery: create table failed: " + r.text);
     json created = json::parse(r.text);
-    std::string csvPath = "/data/" + tableName + ".csv";
+    std::string csvPath = std::string("../data/") + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "id\n";
@@ -345,7 +346,7 @@ void lessColumnsInCSVCopyQuery(){
     cpr::Response r = cpr::Put(cpr::Url{BASE_URL + "/table"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{createBody});
     if (r.status_code != 200) fail("lessColumnsInCSVCopyQuery: create table failed: " + r.text);
     json created = json::parse(r.text);
-    std::string csvPath = "/data/" + tableName + ".csv";
+    std::string csvPath = std::string("../data/") + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "a,b\n";
@@ -363,7 +364,7 @@ void lessColumnsInCSVCopyQuery(){
 
 void tableNotExistsCopyQuery(){
     std::string tableName = "not_exists_" + std::to_string(::time(nullptr));
-    std::string csvPath = "/data/" + tableName + ".csv";
+    std::string csvPath = std::string("../data/") + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "id\n1\n";
@@ -387,7 +388,7 @@ void invalidPathCopyQuery(){
 
     if (r.status_code != 200) fail("invalidPathCopyQuery: create table failed: " + r.text);
     json created = json::parse(r.text);
-    std::string csvPath = "/data/does-not-exist-" + std::to_string(::time(nullptr)) + ".csv";
+    std::string csvPath = "../data/does-not-exist-" + std::to_string(::time(nullptr)) + ".csv";
 
     json copyReq = json::object();
     copyReq["queryDefinition"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
@@ -405,7 +406,7 @@ void getQueryResultWithCorrectQueryId(){
     cpr::Response r = cpr::Put(cpr::Url{BASE_URL + "/table"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{createBody});
     if (r.status_code != 200) fail("getQueryResultWithCorrectQueryId: create table failed: " + r.text);
     json created = json::parse(r.text);
-    std::string csvPath = "/data/" + tableName + ".csv";
+    std::string csvPath = std::string("../data/") + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "id\n";
@@ -472,7 +473,7 @@ void getQueryErrorWithCorrectQueryId(){
     cpr::Response r = cpr::Put(cpr::Url{BASE_URL + "/table"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{createBody});
     if (r.status_code != 200) fail("getQueryErrorWithCorrectQueryId: create table failed: " + r.text);
     json created = json::parse(r.text);
-    std::string csvPath = "/data/" + tableName + ".csv";
+    std::string csvPath = std::string("../data/") + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "id\n";
@@ -553,7 +554,7 @@ void testRowLimitAndFlushResult(){
     if (!created.is_string()) fail("testRowLimitAndFlushResult: expected string TableID");
     std::string tableId = created.get<std::string>();
 
-    std::string csvPath = "/data/" + tableName + ".csv";
+    std::string csvPath = std::string("../data/") + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "id\n";
@@ -599,6 +600,29 @@ void testRowLimitAndFlushResult(){
 
     if (!tableId.empty()) cpr::Response del = cpr::Delete(cpr::Url{BASE_URL + "/table/" + tableId});
 }
+
+void cleanupTestFiles() {
+    try {
+        namespace fs = std::filesystem;
+        fs::path dataDir = fs::path("../data");
+        if (!fs::exists(dataDir) || !fs::is_directory(dataDir)) return;
+        for (auto &p : fs::directory_iterator(dataDir)) {
+            try {
+                if (!p.is_regular_file()) continue;
+                std::string fname = p.path().filename().string();
+                if (p.path().extension() != ".csv") continue;
+                if (fname.rfind("ct_", 0) == 0 || fname.rfind("qe_", 0) == 0 || fname.rfind("qr_", 0) == 0 || fname.rfind("not_exists_", 0) == 0 || fname.rfind("rlfr_", 0) == 0) {
+                    fs::remove(p.path());
+                }
+            } catch (const std::exception &e) {
+                std::cerr << "[test-runner] cleanup: failed to remove " << p.path() << " : " << e.what() << std::endl;
+            }
+        }
+    } catch (const std::exception &e) {
+        std::cerr << "[test-runner] cleanup: filesystem error: " << e.what() << std::endl;
+    }
+}
+
 int main() {
 
     std::cout << "[test-runner] getSystem()" << std::endl;
@@ -630,6 +654,7 @@ int main() {
 
     std::cout << "[test-runner] getQuieriesId() -> count:" << getQuieriesId().size() << std::endl;
 
+    std::cout << "[test-runner] queryWithInvalidQueryDefinition()" << std::endl;
     std::cout << "[test-runner] queryWithInvalidQueryDefinition()" << std::endl;
     queryWithInvalidQueryDefinition();
 
@@ -681,5 +706,6 @@ int main() {
     std::cout << "[test-runner] getQueryByInvalidID()" << std::endl;
     getQueryByInvalidID();
 
+    cleanupTestFiles();
     std::cout << "[test-runner] ALL TESTS COMPLETED" << std::endl;
 }

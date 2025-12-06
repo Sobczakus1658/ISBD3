@@ -33,7 +33,7 @@ COPY --from=build /app/data /app/data
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-EXPOSE 8086
+EXPOSE 8090
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["./main"]

@@ -9,7 +9,7 @@
 #include <optional>
 
 using namespace std;
-inline constexpr int PORT = 8086;
+inline constexpr int PORT = 8090;
 inline constexpr size_t BATCH_SIZE = 8192;
 inline constexpr size_t BATCH_NUMBER = 10;
 inline constexpr int compresion_level = 3;
