@@ -4,7 +4,9 @@ RUN apt-get update && apt-get install -y \
     g++ make cmake \
     libssl-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev \
     zlib1g-dev pkg-config \
-    nlohmann-json3-dev
+    nlohmann-json3-dev \
+    libasio-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
