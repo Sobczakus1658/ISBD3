@@ -1,4 +1,7 @@
-.PHONY: all clean batches tests
+.PHONY: all clean batches tests docker
+
+IMAGE_NAME ?= isbd
+IMAGE_TAG  ?= latest
 
 CXX = g++
 CXXFLAGS = -std=c++20 -g \
@@ -51,3 +54,7 @@ zstd/lib/libzstd.a:
 clean:
 	rm -f $(OBJ) $(TARGET)
 	cd zstd && $(MAKE) clean
+
+.PHONY: docker
+docker:
+      docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .

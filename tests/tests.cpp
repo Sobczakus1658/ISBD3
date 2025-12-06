@@ -237,7 +237,7 @@ void correctCopyQueryBasic(){
     if (r.status_code != 200) fail("correctCopyQueryBasic: create table failed: " + r.text);
 
     json created = json::parse(r.text);
-    std::string csvPath = "/tmp/" + tableName + ".csv";
+    std::string csvPath = std::string("../data/") + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "101\n202\n";
@@ -265,7 +265,7 @@ void correctCopyQueryHeaders(){
     if (r.status_code != 200) fail("correctCopyQueryHeaders: create table failed: " + r.text);
 
     json created = json::parse(r.text);
-    std::string csvPath = "/tmp/" + tableName + ".csv";
+    std::string csvPath = "/data/" + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "id\n";
@@ -293,7 +293,7 @@ void correctCopyQueryDestinationColumns(){
     if (r.status_code != 200) fail("correctCopyQueryDestinationColumns: create table failed: " + r.text);
 
     json created = json::parse(r.text);
-    std::string csvPath = "/tmp/" + tableName + ".csv";
+    std::string csvPath = "/data/" + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "note,id\n";
@@ -322,7 +322,7 @@ void invalidDataInCSVCopyQuery(){
     cpr::Response r = cpr::Put(cpr::Url{BASE_URL + "/table"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{createBody});
     if (r.status_code != 200) fail("invalidDataInCSVCopyQuery: create table failed: " + r.text);
     json created = json::parse(r.text);
-    std::string csvPath = "/tmp/" + tableName + ".csv";
+    std::string csvPath = "/data/" + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "id\n";
@@ -345,7 +345,7 @@ void lessColumnsInCSVCopyQuery(){
     cpr::Response r = cpr::Put(cpr::Url{BASE_URL + "/table"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{createBody});
     if (r.status_code != 200) fail("lessColumnsInCSVCopyQuery: create table failed: " + r.text);
     json created = json::parse(r.text);
-    std::string csvPath = "/tmp/" + tableName + ".csv";
+    std::string csvPath = "/data/" + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "a,b\n";
@@ -363,7 +363,7 @@ void lessColumnsInCSVCopyQuery(){
 
 void tableNotExistsCopyQuery(){
     std::string tableName = "not_exists_" + std::to_string(::time(nullptr));
-    std::string csvPath = "/tmp/" + tableName + ".csv";
+    std::string csvPath = "/data/" + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "id\n1\n";
@@ -387,7 +387,7 @@ void invalidPathCopyQuery(){
 
     if (r.status_code != 200) fail("invalidPathCopyQuery: create table failed: " + r.text);
     json created = json::parse(r.text);
-    std::string csvPath = "/tmp/does-not-exist-" + std::to_string(::time(nullptr)) + ".csv";
+    std::string csvPath = "/data/does-not-exist-" + std::to_string(::time(nullptr)) + ".csv";
 
     json copyReq = json::object();
     copyReq["queryDefinition"] = json::object({{"sourceFilepath", csvPath}, {"destinationTableName", tableName}, {"doesCsvContainHeader", true}});
@@ -405,7 +405,7 @@ void getQueryResultWithCorrectQueryId(){
     cpr::Response r = cpr::Put(cpr::Url{BASE_URL + "/table"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{createBody});
     if (r.status_code != 200) fail("getQueryResultWithCorrectQueryId: create table failed: " + r.text);
     json created = json::parse(r.text);
-    std::string csvPath = "/tmp/" + tableName + ".csv";
+    std::string csvPath = "/data/" + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "id\n";
@@ -472,7 +472,7 @@ void getQueryErrorWithCorrectQueryId(){
     cpr::Response r = cpr::Put(cpr::Url{BASE_URL + "/table"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{createBody});
     if (r.status_code != 200) fail("getQueryErrorWithCorrectQueryId: create table failed: " + r.text);
     json created = json::parse(r.text);
-    std::string csvPath = "/tmp/" + tableName + ".csv";
+    std::string csvPath = "/data/" + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "id\n";
@@ -553,7 +553,7 @@ void testRowLimitAndFlushResult(){
     if (!created.is_string()) fail("testRowLimitAndFlushResult: expected string TableID");
     std::string tableId = created.get<std::string>();
 
-    std::string csvPath = "/tmp/" + tableName + ".csv";
+    std::string csvPath = "/data/" + tableName + ".csv";
     {
         std::ofstream out(csvPath);
         out << "id\n";

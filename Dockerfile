@@ -27,8 +27,13 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 COPY --from=build /app/main /app/main
-COPY data /app/data
+COPY --from=build /app/metastore /app/metastore
+COPY --from=build /app/data /app/data
+
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 8086
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["./main"]
