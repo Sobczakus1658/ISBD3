@@ -28,8 +28,8 @@ SRC = \
       errors/errors.cpp \
       utils/utils.cpp
 
-SRC += $(wildcard restbed-old/source/corvusoft/restbed/*.cpp)
-SRC += $(wildcard restbed-old/source/corvusoft/restbed/detail/*.cpp)
+SRC += $(wildcard cpp-restbed-server/source/corvusoft/restbed/*.cpp)
+SRC += $(wildcard cpp-restbed-server/source/corvusoft/restbed/detail/*.cpp)
 SRC += $(wildcard csv-parser/include/internal/*.cpp)
 
 OBJ = $(SRC:.cpp=.o)
