@@ -4,9 +4,8 @@ CXX = g++
 CXXFLAGS = -std=c++20 -g \
            -I zstd/lib \
            -I zstd/lib/common \
-           -I cpp-client \
            -I/usr/local/include \
-           -I restbed-old/source \
+           -I cpp-restbed-server/source \
            -I csv-parser/include \
            -I thirdparty/include
 
