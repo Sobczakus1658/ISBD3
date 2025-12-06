@@ -2,3 +2,6 @@
 	path = zstd
 	url = https://github.com/facebook/zstd.git
 	
+[submodule "cpp-restbed-server"]
+    path = cpp-restbed-server
+    url = https://github.com/Corvusoft/restbed.git
