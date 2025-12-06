@@ -1,5 +1,6 @@
 #include "../types.h"
+#include <vector>
 
-void validateBatches(vector<Batch>& batches, vector<Batch>& deserializated_batches);
+void validateBatches(std::vector<Batch>& batches, std::vector<Batch>& deserializated_batches);
 
-void printBatch(const Batch& b); 
+void printBatch(const Batch& b);

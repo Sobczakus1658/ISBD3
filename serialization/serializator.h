@@ -1,5 +1,6 @@
 #include "../types.h"
 #include <string>
+#include <vector>
 
 
-void serializator(vector<Batch> &batches, const string& filepath, uint64_t PART_LIMIT);
+std::vector<std::string> serializator(std::vector<Batch> &batches, const std::string& filepath, uint64_t PART_LIMIT);
