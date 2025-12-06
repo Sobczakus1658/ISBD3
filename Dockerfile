@@ -3,15 +3,18 @@ FROM debian:12-slim AS build
 RUN apt-get update && apt-get install -y \
     g++ make cmake \
     libssl-dev libboost-system-dev libboost-thread-dev libboost-filesystem-dev \
-    zlib1g-dev pkg-config
+    zlib1g-dev pkg-config \
+    nlohmann-json3-dev
 
 WORKDIR /app
 
-COPY . .
-
+COPY zstd ./zstd
 RUN make -C zstd
 
+COPY . .
+
 RUN make all
+
 
 FROM debian:12-slim
 
