@@ -16,7 +16,6 @@ static const filesystem::path basePath =  filesystem::current_path() / "metastor
 
 std::optional<TableInfo> getTableInfoByName(const std::string& name) {
     json meta = readLocalFile(basePath);
-    // normalize missing or legacy file: ensure meta is an object with "tables"
     if (!meta.is_object()) {
         meta = json::object();
         meta["tables"] = json::object();
