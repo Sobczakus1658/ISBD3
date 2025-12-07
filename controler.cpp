@@ -193,8 +193,7 @@ void submitQueryHandler(const shared_ptr<Session> session) {
             const auto &def = json_message["queryDefinition"];
             string query_id = generateID();
             initQuery(query_id);
-            json jsonResponse;
-            jsonResponse["queryId"] = query_id;
+            json jsonResponse = query_id;
             changeStatus(query_id, QueryStatus::PLANNING);
             log_info("submitQuery changed status to PLANNING");
 

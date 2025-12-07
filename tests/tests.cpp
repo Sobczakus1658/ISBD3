@@ -223,9 +223,9 @@ void copyQueryWithoutNeccesaryFields() {
     cpr::Response r = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{body.dump()});
     if (r.status_code != 200) return;
     json created = json::parse(r.text);
-    if (!created.contains("queryId")) return;
 
-    std::string qid = created["queryId"].get<std::string>();
+    std::string qid = created.get<std::string>();
+
     std::string status = pollQueryStatus(qid);
     if (status.empty()) fail("copyQueryWithoutNeccesaryFields: no final status");
     if (status != "FAILED") fail("copyQueryWithoutNeccesaryFields: expected FAILED but got " + status);
@@ -249,7 +249,7 @@ void correctCopyQueryBasic(){
     if (copyResp.status_code != 200) fail("correctCopyQueryBasic: submit failed: " + copyResp.text);
 
     json copyCreated = json::parse(copyResp.text);
-    std::string qid = copyCreated.value("queryId", std::string());
+    std::string qid = copyCreated.get<std::string>();
     if (qid.empty()) fail("correctCopyQueryBasic: missing queryId");
     std::string status = pollQueryStatus(qid);
     if (status != "COMPLETED") fail("correctCopyQueryBasic: expected COMPLETED but got " + status);
@@ -278,7 +278,7 @@ void correctCopyQueryHeaders(){
     if (copyResp.status_code != 200) fail("correctCopyQueryHeaders: submit failed: " + copyResp.text);
 
     json copyCreated = json::parse(copyResp.text);
-    std::string qid = copyCreated.value("queryId", std::string());
+    std::string qid = copyCreated.get<std::string>();
     if (qid.empty()) fail("correctCopyQueryHeaders: missing queryId");
     std::string status = pollQueryStatus(qid);
     if (status != "COMPLETED") fail("correctCopyQueryHeaders: expected COMPLETED but got " + status);
@@ -307,7 +307,7 @@ void correctCopyQueryDestinationColumns(){
     if (copyResp.status_code != 200) fail("correctCopyQueryDestinationColumns: submit failed: " + copyResp.text);
 
     json copyCreated = json::parse(copyResp.text);
-    std::string qid = copyCreated.value("queryId", std::string());
+    std::string qid = copyCreated.get<std::string>();
     if (qid.empty()) fail("correctCopyQueryDestinationColumns: missing queryId");
     std::string status = pollQueryStatus(qid);
     if (status != "COMPLETED") fail("correctCopyQueryDestinationColumns: expected COMPLETED but got " + status);
@@ -417,7 +417,7 @@ void getQueryResultWithCorrectQueryId(){
     cpr::Response copyResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{copyReq.dump()});
     if (copyResp.status_code != 200) fail("getQueryResultWithCorrectQueryId: copy submit failed: " + copyResp.text);
     json copyCreated = json::parse(copyResp.text);
-    std::string copyQid = copyCreated.value("queryId", std::string());
+    std::string copyQid = copyCreated.get<std::string>();
     if (copyQid.empty()) fail("getQueryResultWithCorrectQueryId: missing copy queryId");
     std::string copyStatus = pollQueryStatus(copyQid);
     if (copyStatus != "COMPLETED") fail("getQueryResultWithCorrectQueryId: copy did not complete: " + copyStatus);
@@ -427,7 +427,7 @@ void getQueryResultWithCorrectQueryId(){
     cpr::Response selectResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{selectReq.dump()});
     if (selectResp.status_code != 200) fail("getQueryResultWithCorrectQueryId: select submit failed: " + selectResp.text);
     json selectCreated = json::parse(selectResp.text);
-    std::string selectQid = selectCreated.value("queryId", std::string());
+    std::string selectQid = selectCreated.get<std::string>();
     if (selectQid.empty()) fail("getQueryResultWithCorrectQueryId: missing select queryId");
     std::string selectStatus = pollQueryStatus(selectQid);
     if (selectStatus != "COMPLETED") fail("getQueryResultWithCorrectQueryId: select did not complete: " + selectStatus);
@@ -568,7 +568,7 @@ void testRowLimitAndFlushResult(){
     cpr::Response copyResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{copyReq.dump()});
     if (copyResp.status_code != 200) fail("testRowLimitAndFlushResult: copy submit failed: " + copyResp.text);
     json copyCreated = json::parse(copyResp.text);
-    std::string copyQid = copyCreated.value("queryId", std::string());
+    std::string copyQid = copyCreated.get<std::string>();
     if (copyQid.empty()) fail("testRowLimitAndFlushResult: missing copy queryId");
     std::string copyStatus = pollQueryStatus(copyQid);
     if (copyStatus != "COMPLETED") fail("testRowLimitAndFlushResult: copy did not complete: " + copyStatus);
@@ -578,7 +578,7 @@ void testRowLimitAndFlushResult(){
     cpr::Response selectResp = cpr::Post(cpr::Url{BASE_URL + "/query"}, cpr::Header{{"Content-Type","application/json"}}, cpr::Body{selectReq.dump()});
     if (selectResp.status_code != 200) fail("testRowLimitAndFlushResult: select submit failed: " + selectResp.text);
     json selectCreated = json::parse(selectResp.text);
-    std::string selectQid = selectCreated.value("queryId", std::string());
+    std::string selectQid = selectCreated.get<std::string>();
     if (selectQid.empty()) fail("testRowLimitAndFlushResult: missing select queryId");
     std::string selectStatus = pollQueryStatus(selectQid);
     if (selectStatus != "COMPLETED") fail("testRowLimitAndFlushResult: select did not complete: " + selectStatus);
