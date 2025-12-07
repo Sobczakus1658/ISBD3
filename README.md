@@ -1,7 +1,7 @@
 # Projekt numer 2
 
 # Uruchomienie programu 
-Aby poprawnie uruchomić projekt, należy pobrać repozytorium wraz z jego podmodułami (biblioteką `zstd`, wykorzystywaną do kompresji napisów, `cpp-restbed-server` do korzystania z REST-API, `cpr` do testowania API  oraz `csv-parser` do parsowania plików csv)
+Aby poprawnie uruchomić projekt, należy pobrać repozytorium wraz z jego podmodułami (biblioteką `zstd`, wykorzystywaną do kompresji napisów, `cpp-restbed-server` do korzystania z REST-API oraz `csv-parser` do parsowania plików csv)
 
 UWAGA: wykonanie tej komendy może potrwać nawet kilka minut !
 
@@ -14,6 +14,9 @@ Następnie należy zbudować obraz dockera (powinno potrwać koło 5 minut) :
 a następnie uruchomić aplikację w dockerze :
 
 `./run_docker.sh`
+
+## Wymagania testów:
+należy miec pobranę bibliotekę cpr 
 
 Testy znajdują się w folderze tests, najpierw należy wykonać:
 
