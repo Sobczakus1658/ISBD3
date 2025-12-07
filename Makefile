@@ -7,10 +7,11 @@ CXX = g++
 CXXFLAGS = -std=c++20 -g \
            -I zstd/lib \
            -I zstd/lib/common \
-           -I/usr/local/include \
            -I cpp-restbed-server/source \
            -I csv-parser/include \
-           -I thirdparty/include
+           -I thirdparty/include \
+           -I thirdparty/cpr/include \
+           -I/usr/local/include
 
 LDFLAGS = -L zstd/lib -lssl -lcrypto -lboost_system -lpthread -lzstd
 
@@ -37,10 +38,14 @@ SRC += $(wildcard csv-parser/include/internal/*.cpp)
 
 OBJ = $(SRC:.cpp=.o)
 
-all: batches zstd/lib/libzstd.a $(TARGET)
+CPR_DIR = thirdparty/cpr
+CPR_BUILD = $(CPR_DIR)/build
+CPR_LIB = $(CPR_BUILD)/libcpr.a
 
-$(TARGET): $(OBJ)
-	$(CXX) $(OBJ) -o $@ $(LDFLAGS)
+all: batches zstd/lib/libzstd.a $(CPR_LIB) $(TARGET)
+
+$(TARGET): $(OBJ) $(CPR_LIB)
+	$(CXX) $(OBJ) $(CPR_LIB) -o $@ $(LDFLAGS)
 
 batches:
 	mkdir -p batches
@@ -48,13 +53,19 @@ batches:
 zstd/lib/libzstd.a:
 	cd zstd && $(MAKE)
 
+$(CPR_LIB):
+	mkdir -p $(CPR_BUILD)
+	cd $(CPR_BUILD) && cmake .. -DCPR_BUILD_TESTS=OFF
+	cd $(CPR_BUILD) && make
+
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
 	rm -f $(OBJ) $(TARGET)
 	cd zstd && $(MAKE) clean
+	cd $(CPR_BUILD) && make clean
 
 .PHONY: docker
 docker:
-      docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
+	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
