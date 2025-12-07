@@ -7,22 +7,28 @@ UWAGA: wykonanie tej komendy może potrwać nawet kilka minut !
 
 `git submodule update --init --recursive`
 
-Następnie należy zbudowac obraz dockera (powinno potrwac koło 5 minut) :
+Następnie należy zbudować obraz dockera (powinno potrwać koło 5 minut) :
 
 `docker build -t isbd . `
 
-a następnie urochmić aplikację w dockerze :
+a następnie urochomić aplikację w dockerze :
 
 `./run_docker.sh`
 
-Testy znajdują się w folderze tests, najpierw nalezy wykonać:
+Testy znajdują się w folderze tests, najpierw należy wykonać:
 
 `cd tests `
 `make`
 
-a następnie je urochomić komendą:
+a następnie je uruchomić komendą:
 
 `.\run_tests`
+
+# Omówienie projektu
+
+1) Testy zostały przygotowane do działania w środowisku Dockera. Przy uruchomieniu programu lokalnie ( `make` i `.\main`) mogą pojawić się problemy ze ścieżkami do pliku CSV.
+2) Wyniki zapytań zapisujemy do plików: `queries.json`, `errors.json` oraz `results.json`. Są one zawsze dostępne, nawet przy zrestartowaniu aplikacji.
+3) Obecnie program działa jednowątkowo, więc nie ma ryzyka równoczesnego odczytu nieukończonych transakcji. Podczas importu danych z CSV najpierw tworzone są wszytskie pliki, a dopiero po zakończeniu tej operacji ich ścieżki i nazwy trafiają do metastore. Dzięki temu, nawet w przyszłej wersji z wieloma wątkami, nie pojawi się sytuacja, w której inny proces odczyta dane z niedokończonej transakcji.
 
 # Projekt numer 1  
 Poniżej znajduje się opis uruchomienia i działania pierwszej części projektu. W tej części należało zaimplementować format pliku do przechowywania danych, napisać serializator i deserializator umożliwiające zapis i odczyt danych w tym formacie oraz skompresować je przed zapisem. Wartości liczbowe zostały skompresowane przy użyciu metody Delta Int Encoding połączonej z Variable Length Int Encoding. Skorzystałem z biblioteki zstd do kompresji napisów. 
