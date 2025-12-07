@@ -11,7 +11,7 @@ Następnie należy zbudować obraz dockera (powinno potrwać koło 5 minut) :
 
 `docker build -t isbd . `
 
-a następnie urochomić aplikację w dockerze :
+a następnie uruchomić aplikację w dockerze :
 
 `./run_docker.sh`
 
