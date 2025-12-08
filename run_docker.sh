@@ -1,4 +1,4 @@
-docker run -d -p 8090:8090 \
+docker run -d -p 8080:8080 \
   -v "$(pwd)/data":/data \
   -v "$(pwd)/metastore":/app/metastore \
   -v "$(pwd)/errors":/app/errors \

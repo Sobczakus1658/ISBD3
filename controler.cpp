@@ -12,6 +12,7 @@
 #include <vector>
 #include <optional>
 #include <nlohmann/json.hpp>
+#include <chrono>
 
 #include "corvusoft/restbed/settings.hpp"
 #include "corvusoft/restbed/resource.hpp"
@@ -29,6 +30,8 @@ using json = nlohmann::ordered_json;
 
 using namespace std;
 using namespace restbed;
+
+std::chrono::steady_clock::time_point startTime;
 
 bool parseJson(string json_body, json& destination){
     json parsed;
@@ -359,12 +362,22 @@ void getQueryErrorHandler(const shared_ptr<Session> session) {
     closeConnection(session, 200, response.dump());
 }
 
+double getUptimeSeconds() {
+    auto now = std::chrono::steady_clock::now();
+    std::chrono::duration<double> diff = now - startTime;
+    return diff.count();
+}
+
 void getSystemHandler(const shared_ptr<Session> session) {
     log_info("handler getSystemHandler entered");
-    closeConnection(session, 200, getSystemInfo().dump());
+    json info = getSystemInfo();
+    info["uptime"] = getUptimeSeconds();
+    closeConnection(session, 200, info.dump());
 }
 
 int main(){
+
+    startTime = std::chrono::steady_clock::now();
 
     auto tablesResource = make_shared<Resource>();
     tablesResource->set_path("/tables");
