@@ -7,10 +7,9 @@ CXX = g++
 CXXFLAGS = -std=c++20 -g \
            -I zstd/lib \
            -I zstd/lib/common \
-           -I/usr/local/include \
            -I cpp-restbed-server/source \
            -I csv-parser/include \
-           -I thirdparty/include
+           -I/usr/local/include
 
 LDFLAGS = -L zstd/lib -lssl -lcrypto -lboost_system -lpthread -lzstd
 
@@ -57,4 +56,4 @@ clean:
 
 .PHONY: docker
 docker:
-      docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
+	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
