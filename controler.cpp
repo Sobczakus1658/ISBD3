@@ -12,6 +12,7 @@
 #include <vector>
 #include <optional>
 #include <nlohmann/json.hpp>
+#include <chrono>
 
 #include "corvusoft/restbed/settings.hpp"
 #include "corvusoft/restbed/resource.hpp"
@@ -25,10 +26,13 @@
 #include "utils/utils.h"
 
 
+
 using json = nlohmann::ordered_json;
 
 using namespace std;
 using namespace restbed;
+
+std::chrono::steady_clock::time_point startTime;
 
 bool parseJson(string json_body, json& destination){
     json parsed;
@@ -120,17 +124,18 @@ void createTableHandler(const shared_ptr<Session> session) {
 
             CreateTableResult result = createTable(to_create);
 
-            json response_json;
             int status = 200;
+            std::string response_body;
 
             if (result.problem.empty()) {
-                response_json = result.tableId;
+                response_body = result.tableId;
             } else {
-                response_json = errorResponse(result.problem);
+                json error_response = errorResponse(result.problem);
+                response_body = error_response.dump();
                 status = 400;
             }
             log_info("handler createTableHandler finished with status " + std::to_string(status));
-            closeConnection(session, status, response_json.dump());
+            closeConnection(session, status, response_body);
         }
     );
 }
@@ -359,12 +364,22 @@ void getQueryErrorHandler(const shared_ptr<Session> session) {
     closeConnection(session, 200, response.dump());
 }
 
+double getUptimeSeconds() {
+    auto now = std::chrono::steady_clock::now();
+    std::chrono::duration<double> diff = now - startTime;
+    return diff.count();
+}
+
 void getSystemHandler(const shared_ptr<Session> session) {
     log_info("handler getSystemHandler entered");
-    closeConnection(session, 200, getSystemInfo().dump());
+    json info = getSystemInfo();
+    info["uptime"] = getUptimeSeconds();
+    closeConnection(session, 200, info.dump());
 }
 
 int main(){
+
+    startTime = std::chrono::steady_clock::now();
 
     auto tablesResource = make_shared<Resource>();
     tablesResource->set_path("/tables");
