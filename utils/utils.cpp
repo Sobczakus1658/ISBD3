@@ -180,10 +180,11 @@ QueryType recogniseQuery(const json &query) {
         return QueryType::COPY;
     }
 
-    if (def.contains("tableName") && def["tableName"].is_string()) {
+    if (def.contains("columnClauses") &&
+        def["columnClauses"].is_array() &&
+        !def["columnClauses"].empty()) {
         return QueryType::SELECT;
     }
-
     return QueryType::ERROR;
 }
 

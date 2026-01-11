@@ -71,7 +71,7 @@ void initResult(std::string id){
     saveFile(basePath, results);
 }
 
-void modifyResult(std::string id, vector<Batch>& batches){
+void modifyResult(std::string id, std::vector<MixBatch>& batches){
     json results = readLocalFile(basePath);
 
     auto it = std::find_if(results.begin(), results.end(),
@@ -86,7 +86,7 @@ void modifyResult(std::string id, vector<Batch>& batches){
 
     size_t totalColumns = 0;
     if (!batches.empty()) {
-        totalColumns = batches[0].intColumns.size() + batches[0].stringColumns.size();
+        totalColumns = batches[0].columns.size();
     }
 
     if (!entry.contains("columns") || entry["columns"].is_null()) {
@@ -101,7 +101,6 @@ void modifyResult(std::string id, vector<Batch>& batches){
         entry["columns"] = json::array();
     }
 
-
     if (entry["columns"].size() < totalColumns) {
         for (size_t i = entry["columns"].size(); i < totalColumns; ++i) {
             entry["columns"].push_back(json::array());
@@ -110,15 +109,12 @@ void modifyResult(std::string id, vector<Batch>& batches){
 
     for (const auto& batch : batches) {
        size_t colIdx = 0;
-       for (const auto& col : batch.intColumns) {
-           for (auto val : col.column) {
-               entry["columns"][colIdx].push_back(val);
-           }
-           colIdx++;
-       }
-       for (const auto& col : batch.stringColumns) {
-           for (const auto& val : col.column) {
-               entry["columns"][colIdx].push_back(val);
+       for (const auto& col : batch.columns) {
+           for (const auto& val : col.data) {
+               if (val.type == ValueType::INT64) entry["columns"][colIdx].push_back(val.intValue);
+               else if (val.type == ValueType::VARCHAR) entry["columns"][colIdx].push_back(val.stringValue);
+               else if (val.type == ValueType::BOOL) entry["columns"][colIdx].push_back(val.boolValue);
+               else entry["columns"][colIdx].push_back(nullptr);
            }
            colIdx++;
        }

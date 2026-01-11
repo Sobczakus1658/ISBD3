@@ -2,6 +2,8 @@
 #include "../queries/queries.h"
 #include "../results/results.h"
 #include "../serialization/deserializator.h"
+#include "../query/executor/selectExecutor.h"
+#include "../query/planer/selectPlaner.h"
 #include <csv.hpp>
 #include <random>
 #include <iostream>
@@ -199,22 +201,40 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
     return response;
 }
 
-SELECT_TABLE_ERROR selectTable(SelectQuery select_query, string queryId){
+SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
     std::optional<TableInfo> infoOpt = getTableInfoByName(select_query.tableName);
     if (!infoOpt) {
         return SELECT_TABLE_ERROR::TABLE_NOT_EXISTS;
     }
+
     TableInfo info = *infoOpt;
+
+    auto planResult = planSelectQuery(const_cast<SelectQuery&>(select_query), info);
+
+    if (planResult != SELECT_TABLE_ERROR::NONE) {
+        return planResult;
+    }
+
     changeStatus(queryId, QueryStatus::RUNNING);
     initResult(queryId);
+
+    std::vector<MixBatch> accumulatedBatches;
     for (const auto &f : info.files) {
         std::string path = info.location;
         if (!path.empty() && path.back() != '/' && path.back() != '\\') path.push_back('/');
         path += f;
 
         std::vector<Batch> batches = move(deserializator(path));
-        modifyResult(queryId, batches);
+
+        for (auto &batch : batches) {
+            executeSelectBatch(select_query, batch, accumulatedBatches);
+        }
     }
+
+    orderAndLimitResult(accumulatedBatches, select_query.orderByClauses, select_query.limit);
+    modifyResult(queryId, accumulatedBatches);
+
     return SELECT_TABLE_ERROR::NONE;
 }
+
 

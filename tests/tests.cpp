@@ -10,7 +10,7 @@
 using namespace std;
 using json = nlohmann::ordered_json;
 
-static const std::string BASE_URL = "http://localhost:8090";
+static const std::string BASE_URL = "http://localhost:8080";
 
 void fail(const std::string &msg) {
     std::cerr << "FAIL: " << msg << std::endl;

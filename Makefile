@@ -28,7 +28,11 @@ SRC = \
       queries/queries.cpp \
       results/results.cpp \
       errors/errors.cpp \
-      utils/utils.cpp
+      utils/utils.cpp \
+      query/parser/selectQueryParser.cpp \
+      query/executor/selectExecutor.cpp \
+      query/planer/selectPlaner.cpp \
+      query/evaluation/evalColumnExpression.cpp
 
 SRC += $(wildcard cpp-restbed-server/source/corvusoft/restbed/*.cpp)
 SRC += $(wildcard cpp-restbed-server/source/corvusoft/restbed/detail/*.cpp)
@@ -57,3 +61,4 @@ clean:
 .PHONY: docker
 docker:
 	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
+

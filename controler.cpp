@@ -13,6 +13,7 @@
 #include <optional>
 #include <nlohmann/json.hpp>
 #include <chrono>
+#include <utility>
 
 #include "corvusoft/restbed/settings.hpp"
 #include "corvusoft/restbed/resource.hpp"
@@ -24,6 +25,7 @@
 
 #include "service/executionService.h"
 #include "utils/utils.h"
+#include "query/parser/selectQueryParser.h"
 
 
 
@@ -222,18 +224,18 @@ void submitQueryHandler(const shared_ptr<Session> session) {
                     break;
                 } 
                 case QueryType::SELECT: {
-                    SelectQuery sq;
-                    sq.tableName = def["tableName"];
-                    addQueryDefinition(query_id, sq);
+                    SelectQuery sq = parse(def);
+
                     SELECT_TABLE_ERROR response = selectTable(sq, query_id);
 
                     if (response == SELECT_TABLE_ERROR::NONE){
+                        addQueryDefinition(query_id, std::move(sq));
                         changeStatus(query_id, QueryStatus::COMPLETED);
                         log_info("submitQuery - select finished with status 200");
                         closeConnection(session, 200, jsonResponse.dump());
                         return;
                     }
-                    
+
                     changeStatus(query_id, QueryStatus::FAILED);
                     string error = "Table " + sq.tableName + " does not exist" ;
                     log_info("submitQuery - select finished with status 400");

@@ -8,6 +8,8 @@
 #include <variant>
 #include <optional>
 
+#include "query/selectQuery.h"
+
 using namespace std;
 inline constexpr int PORT = 8080;
 inline constexpr size_t BATCH_SIZE = 8192;
@@ -29,7 +31,8 @@ enum class CREATE_TABLE_ERROR {
 
 enum class SELECT_TABLE_ERROR {
     NONE,
-    TABLE_NOT_EXISTS
+    TABLE_NOT_EXISTS,
+    INVALID_WHERE
 };
 
 struct Problem {
@@ -80,9 +83,17 @@ struct CopyQuery {
     bool doesCsvContainHeader;
 };
 
-struct SelectQuery {
-    string tableName;
+struct ColumnData {
+    ValueType type;
+    std::vector<Value> data;
 };
+
+struct MixBatch {
+    std::vector<ColumnData> columns;
+    size_t num_rows;
+};
+
+
 
 using QueryToJson = std::variant<SelectQuery, CopyQuery>;
 
