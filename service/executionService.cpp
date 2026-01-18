@@ -23,12 +23,22 @@ Batch make_empty_batch(size_t numIntCols, size_t numStrCols) {
 
 std::string get_path(const TableInfo &info){
     if (!info.location.empty()) {
+        fs::path p(info.location);
+        try {
+            if (!fs::exists(p)) fs::create_directories(p);
+        } catch (const std::exception &e) {
+            log_error(std::string("get_path: cannot create directory for location: ") + e.what());
+        }
         return info.location;
     }
 
     fs::path tableDir = fs::path(base) / info.name;
-    if (!fs::exists(tableDir)) {
-        fs::create_directories(tableDir);
+    try {
+        if (!fs::exists(tableDir)) {
+            fs::create_directories(tableDir);
+        }
+    } catch (const std::exception &e) {
+        log_error(std::string("get_path: cannot create table dir: ") + e.what());
     }
     return tableDir;
 }
@@ -136,6 +146,9 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
         std::unordered_map<std::string, int> headerNameToIndex;
         if (q.doesCsvContainHeader) {
             auto col_names = reader.get_col_names();
+            for (size_t i = 0; i < col_names.size(); ++i) {
+                headerNameToIndex[col_names[i]] = (int)i;
+            }
         }
 
         int implicitCsvIdx = 0;
@@ -168,12 +181,12 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
         }
     }
 
+    log_info("przed csv");
     for (csv::CSVRow& row : reader) {
 
         size_t columnsToProcess = csvToTable.size();
 
         size_t intIdx = 0, strIdx = 0;
-
         for (size_t i = 0; i < columnsToProcess; i++) {
             int csv_i = csvToTable[i].first;
             int tbl_i = csvToTable[i].second;
@@ -203,6 +216,7 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
         batch.num_rows++;
 
         if (batch.num_rows == BATCH_SIZE) {
+            log_info("BATCH_SIZE");
             batches.push_back(std::move(batch));
             batch = make_empty_batch(intCount, strCount);
             for (size_t i = 0; i < batch.intColumns.size() && i < intNames.size(); ++i) batch.intColumns[i].name = intNames[i];
@@ -222,18 +236,28 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
             }
         }
     }
-    if (batch.num_rows > 0) {
-        batches.push_back(std::move(batch));
+    log_info(std::string("batch.num_rows") + std::to_string(batch.num_rows));
+
+    // Flush any remaining batches: either there are some full batches accumulated
+    // (batches.size() > 0) or there is a partial batch in `batch` (batch.num_rows > 0).
+    if (!batches.empty() || batch.num_rows > 0) {
+        if (batch.num_rows > 0) {
+            batches.push_back(std::move(batch));
+        }
+
         if (!send) {
             changeStatus(query_id, QueryStatus::RUNNING);
             send = !send;
         }
+
         for (auto &bb : batches) {
             for (size_t i = 0; i < bb.intColumns.size() && i < intNames.size(); ++i) bb.intColumns[i].name = intNames[i];
             for (size_t i = 0; i < bb.stringColumns.size() && i < strNames.size(); ++i) bb.stringColumns[i].name = strNames[i];
         }
+
         std::vector<std::string> tmp = std::move(serializator(batches, path, PART_LIMIT));
         fileNames.insert(fileNames.end(), tmp.begin(), tmp.end());
+        batches.clear();
     }
 
     addLocationAndFiles(info.id, path, fileNames);
@@ -243,21 +267,65 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
 
 SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
     SelectQuery &sq = const_cast<SelectQuery&>(select_query);
+    // Determine whether the query actually references table columns.
+    auto exprUsesColumnRef = [&](const ColumnExpression &expr) {
+        // recursive lambda: check node and children
+        std::function<bool(const ColumnExpression&)> visit;
+        visit = [&](const ColumnExpression &e) -> bool {
+            switch (e.type) {
+                case ExprType::COLUMN_REF: return true;
+                case ExprType::LITERAL: return false;
+                case ExprType::UNARY_OP:
+                    if (e.unary.operand) return visit(*e.unary.operand);
+                    return false;
+                case ExprType::BINARY_OP:
+                    if (e.binary.left && visit(*e.binary.left)) return true;
+                    if (e.binary.right && visit(*e.binary.right)) return true;
+                    return false;
+                case ExprType::FUNCTION:
+                    for (const auto &arg : e.function.args) if (arg && visit(*arg)) return true;
+                    return false;
+            }
+            return false;
+        };
+        return visit(expr);
+    };
+
+    TableInfo info;
+    bool haveTableInfo = false;
+    log_info("kuirwa");
     if (sq.tableName.empty()) {
-        auto tables = getTables();
-        if (tables.size() == 1) {
-            sq.tableName = tables.begin()->second;
+        log_info("chujasek");
+        // If query references table columns, try to pick the single table if DB has exactly one table.
+        bool usesCols = false;
+        if (sq.whereClause) usesCols = usesCols || exprUsesColumnRef(*sq.whereClause);
+        for (const auto &pc : sq.columnClauses) if (pc) usesCols = usesCols || exprUsesColumnRef(*pc);
+
+        if (usesCols) {
+            auto tables = getTables();
+            if (tables.size() == 1) {
+                sq.tableName = tables.begin()->second;
+            } else {
+                return SELECT_TABLE_ERROR::TABLE_NOT_EXISTS;
+            }
         } else {
-            return SELECT_TABLE_ERROR::TABLE_NOT_EXISTS;
+            // Table-less query (e.g., SELECT 1+2 or SELECT f() ). We'll use empty TableInfo.
+            info.name = std::string();
+            info.id = 0;
+            info.info.clear();
+            info.location.clear();
+            info.files.clear();
+            haveTableInfo = true;
         }
     }
 
-    std::optional<TableInfo> infoOpt = getTableInfoByName(sq.tableName);
-    if (!infoOpt) {
-        return SELECT_TABLE_ERROR::TABLE_NOT_EXISTS;
+    if (!haveTableInfo) {
+        std::optional<TableInfo> infoOpt = getTableInfoByName(sq.tableName);
+        if (!infoOpt) {
+            return SELECT_TABLE_ERROR::TABLE_NOT_EXISTS;
+        }
+        info = *infoOpt;
     }
-
-    TableInfo info = *infoOpt;
 
     auto planResult = planSelectQuery(sq, info);
 
@@ -271,20 +339,31 @@ SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
 
     std::vector<MixBatch> accumulatedBatches;
     std::vector<std::string> runFiles;
-    const size_t MEMORY_LIMIT = 4ULL * 1024ULL;
+
+    // MEMORY_LIMIT: read from env var ISBD_MEMORY_LIMIT (bytes) or default to 4 MiB
+    size_t MEMORY_LIMIT = 4ULL * 1024ULL * 1024ULL;
+    if (const char *env = std::getenv("ISBD_MEMORY_LIMIT")) {
+        try {
+            MEMORY_LIMIT = std::stoull(env);
+        } catch (...) {
+            log_error(std::string("Invalid ISBD_MEMORY_LIMIT value: ") + env);
+        }
+    }
 
     auto estimateBatchesBytes = [](const std::vector<MixBatch> &batches) {
         size_t bytes = 0;
+        // Conservative estimate: count sizeof(Value) per element + string sizes for VARCHAR
         for (const auto &b : batches) {
             for (const auto &col : b.columns) {
-                if (col.type == ValueType::INT64) {
-                    bytes += col.data.size() * sizeof(int64_t);
-                } else if (col.type == ValueType::VARCHAR) {
+                // count vector<Value> metadata (approx)
+                bytes += sizeof(col);
+                // count Value objects
+                bytes += col.data.size() * sizeof(decltype(col.data)::value_type);
+                if (col.type == ValueType::VARCHAR) {
                     for (const auto &v : col.data) bytes += v.stringValue.size();
-                } else if (col.type == ValueType::BOOL) {
-                    bytes += col.data.size() * sizeof(bool);
                 }
             }
+            // small overhead per batch
             bytes += sizeof(b.num_rows);
         }
         return bytes;
@@ -299,7 +378,6 @@ SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
 
         std::vector<Batch> batches = move(deserializator(path));
 
-        log_info("siema");
         for (auto &batch : batches) {
             SELECT_TABLE_ERROR r = executeSelectBatch(select_query, batch, accumulatedBatches);
             if (r != SELECT_TABLE_ERROR::NONE) {
@@ -307,7 +385,6 @@ SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
             }
             size_t est = estimateBatchesBytes(accumulatedBatches);
             size_t accRows = 0;
-            log_info(std::string("hej ") + std::to_string(est));
             for (const auto &b : accumulatedBatches) accRows += b.num_rows;
             if (est > MEMORY_LIMIT) {
                 try {

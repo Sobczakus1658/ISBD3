@@ -11,6 +11,7 @@
 #include "../evaluation/expression_cache.h"
 #include "../evaluation/expression_hasher.h"
 #include "../../metastore/metastore.h"
+#include "../evaluation/evalColumnExpression.h"
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -33,9 +34,20 @@ SELECT_TABLE_ERROR executeSelectBatch(const SelectQuery &query, const Batch &bat
 }
 
 SELECT_TABLE_ERROR transformBatch(const SelectQuery &query, const Batch &batch, MixBatch &outBatch) {
-    auto infoOpt = getTableInfoByName(query.tableName);
-    if (!infoOpt) return SELECT_TABLE_ERROR::TABLE_NOT_EXISTS;
-    const TableInfo info = *infoOpt;
+    log_info("chuj");
+    TableInfo info;
+    if (query.tableName.empty()) {
+        // table-less query (no FROM) -> empty table info
+        info.name = std::string();
+        info.id = 0;
+        info.info.clear();
+        info.location.clear();
+        info.files.clear();
+    } else {
+        auto infoOpt = getTableInfoByName(query.tableName);
+        if (!infoOpt) return SELECT_TABLE_ERROR::TABLE_NOT_EXISTS;
+        info = *infoOpt;
+    }
 
     std::unordered_map<std::string, size_t> intIndex;
     std::unordered_map<std::string, size_t> strIndex;
@@ -94,11 +106,41 @@ SELECT_TABLE_ERROR transformBatch(const SelectQuery &query, const Batch &batch, 
         exprMap.emplace(h, pc.get());
     }
 
+    // Helper to produce a short textual representation of an expression for logging
+    auto exprToShortString = [&](const ColumnExpression *e) {
+        if (!e) return std::string("<null>");
+        switch (e->type) {
+            case ExprType::LITERAL: return std::string("LIT");
+            case ExprType::COLUMN_REF: return std::string("COL:") + e->columnRef.columnName;
+            case ExprType::UNARY_OP: return std::string("UNARY");
+            case ExprType::BINARY_OP: return std::string("BINARY");
+            case ExprType::FUNCTION: return std::string("FUNC:") + std::to_string((int)e->function.name);
+        }
+        return std::string("?");
+    };
+
+    // Log expr counts for diagnosis
+    if (!exprCount.empty()) {
+        std::string cc = "transformBatch: exprCount:";
+        for (const auto &kv : exprCount) {
+            const ColumnExpression *e = nullptr;
+            auto it = exprMap.find(kv.first);
+            if (it != exprMap.end()) e = it->second;
+            cc += std::string(" [hash=") + std::to_string(kv.first) + std::string(" cnt=") + std::to_string(kv.second) + std::string(" expr=") + exprToShortString(e);
+        }
+        log_info(cc);
+    }
+
     std::vector<size_t> precomputeHashes;
     for (const auto &kv : exprCount) {
         if (kv.second > 1) {
             precomputeHashes.push_back(kv.first);
         }
+    }
+    if (!precomputeHashes.empty()) {
+        std::string list = "transformBatch: will precompute hashes:";
+        for (auto h : precomputeHashes) list += std::string(" ") + std::to_string(h);
+        log_info(list);
     }
     for (size_t rowIdx = 0; rowIdx < batch.num_rows; ++rowIdx) {
         ResultRow rawRow;
@@ -147,14 +189,15 @@ SELECT_TABLE_ERROR transformBatch(const SelectQuery &query, const Batch &batch, 
             auto it = exprMap.find(h);
             if (it == exprMap.end()) continue;
             const ColumnExpression *expr = it->second;
-            cache.getOrCompute(h, [&]{ return evalColumnExpression(*expr, rawRow); });
+            // evaluate with cache so subexpressions are stored and reused
+            (void)evalColumnExpression(*expr, rawRow, &cache);
         }
 
         bool wherePass = true;
         if (query.whereClause) {
             size_t wh = hashExpression(*query.whereClause);
-            if (cache.contains(wh)) std::cout << "hit cache (where)\n";
-            Value wv = cache.getOrCompute(wh, [&]{ return evalColumnExpression(*query.whereClause, rawRow); });
+            if (cache.contains(wh)) log_info("hit cache (where)");
+            Value wv = evalColumnExpression(*query.whereClause, rawRow, &cache);
             if (wv.type != ValueType::BOOL) return SELECT_TABLE_ERROR::INVALID_WHERE;
             wherePass = wv.boolValue;
         }
@@ -165,15 +208,15 @@ SELECT_TABLE_ERROR transformBatch(const SelectQuery &query, const Batch &batch, 
 
         for (size_t p = 0; p < projCols; ++p) {
             size_t ph = hashExpression(*query.columnClauses[p]);
-            if (cache.contains(ph)) std::cout << "hit cache (proj)\n";
-            Value v = cache.getOrCompute(ph, [&]{ return evalColumnExpression(*query.columnClauses[p], rawRow); });
+            if (cache.contains(ph)) log_info("hit cache (proj)");
+            Value v = evalColumnExpression(*query.columnClauses[p], rawRow, &cache);
             outBatch.columns[baseCols + p].type = v.type;
             outBatch.columns[baseCols + p].data.push_back(v);
         }
 
         if (whereCol) {
             size_t wh = hashExpression(*query.whereClause);
-            Value wv = cache.getOrCompute(wh, [&]{ return evalColumnExpression(*query.whereClause, rawRow); });
+            Value wv = evalColumnExpression(*query.whereClause, rawRow, &cache);
             outBatch.columns[baseCols + projCols].data.push_back(wv);
         }
 
