@@ -16,3 +16,5 @@ void changeStatus(std::string id, QueryStatus status);
 
 void addQueryDefinition(std::string id, QueryToJson query);
 
+void addQueryDefinitionRaw(std::string id, const json &def);
+

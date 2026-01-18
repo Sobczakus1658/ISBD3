@@ -32,7 +32,8 @@ SRC = \
       query/parser/selectQueryParser.cpp \
       query/executor/selectExecutor.cpp \
       query/planer/selectPlaner.cpp \
-      query/evaluation/evalColumnExpression.cpp
+      query/evaluation/evalColumnExpression.cpp \
+      query/evaluation/expression_hasher.cpp
 
 SRC += $(wildcard cpp-restbed-server/source/corvusoft/restbed/*.cpp)
 SRC += $(wildcard cpp-restbed-server/source/corvusoft/restbed/detail/*.cpp)

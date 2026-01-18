@@ -79,8 +79,9 @@ std::unique_ptr<ColumnExpression> parseColumnExpression(const json& j) {
 
     if (j.contains("columnName")) {
         expr->type = ExprType::COLUMN_REF;
-        expr->columnRef.tableName = j["tableName"];
-        expr->columnRef.columnName = j["columnName"];
+
+        expr->columnRef.tableName = j.value("tableName", std::string());
+        expr->columnRef.columnName = j.value("columnName", std::string());
         return expr;
     }
 
@@ -88,8 +89,10 @@ std::unique_ptr<ColumnExpression> parseColumnExpression(const json& j) {
         expr->type = ExprType::FUNCTION;
         expr->function.name = parseFunction(j["functionName"]);
 
-        for (auto& a : j["arguments"]) {
-            expr->function.args.push_back(parseColumnExpression(a));
+        if (j.contains("arguments") && j["arguments"].is_array()) {
+            for (const auto& a : j["arguments"]) {
+                expr->function.args.push_back(parseColumnExpression(a));
+            }
         }
         return expr;
     }
@@ -112,7 +115,7 @@ std::unique_ptr<ColumnExpression> parseColumnExpression(const json& j) {
     throw std::runtime_error("Invalid ColumnExpression");
 }
 
-SelectQuery parse(const json& def) {
+SelectQuery parseSelect(const json& def) {
     SelectQuery sq;
 
     
@@ -166,13 +169,21 @@ SelectQuery parse(const json& def) {
         sq.limit = def.at("limitClause").at("limit").get<size_t>();
     }
 
-    if (def.contains("orderByClauses")) {
-        for (const auto &o : def.at("orderByClauses")) {
+    if (def.contains("orderByClause") || def.contains("orderByClauses")) {
+        const json &olist = def.contains("orderByClause") ? def.at("orderByClause") : def.at("orderByClauses");
+        for (const auto &o : olist) {
             OrderByExpression obe;
             if (o.contains("tableName")) obe.tableName = o.value("tableName", std::string());
             if (o.contains("columnName")) obe.columnName = o.value("columnName", std::string());
-            std::string dir = o.value("direction", std::string("ASC"));
-            obe.ascending = (dir == "ASC");
+            if (o.contains("columnIndex") && o["columnIndex"].is_number_integer()) {
+                obe.columnIndex = o["columnIndex"].get<size_t>();
+            }
+            if (o.contains("ascending") && o["ascending"].is_boolean()) {
+                obe.ascending = o["ascending"].get<bool>();
+            } else {
+                std::string dir = o.value("direction", std::string("ASC"));
+                obe.ascending = (dir == "ASC");
+            }
             sq.orderByClauses.push_back(std::move(obe));
         }
     }

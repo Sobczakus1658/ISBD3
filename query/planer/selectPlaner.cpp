@@ -146,20 +146,33 @@ SELECT_TABLE_ERROR planSelectQuery(
             planExpression(*expr, schema);
         }
 
-        for (auto &obe : query.orderByClauses) {
-            bool found = false;
-            for (size_t i = 0; i < query.columnClauses.size(); ++i) {
-                const auto &c = query.columnClauses[i];
-                if (!c) continue;
-                if (c->type == ExprType::COLUMN_REF &&
-                    c->columnRef.columnName == obe.columnName &&
-                    (obe.tableName.empty() || c->columnRef.tableName == obe.tableName)) {
-                    obe.columnIndex = i;
-                    found = true;
-                    break;
+    for (auto &obe : query.orderByClauses) {
+            if (!obe.columnName.empty()) {
+                bool found = false;
+                for (size_t i = 0; i < query.columnClauses.size(); ++i) {
+                    const auto &c = query.columnClauses[i];
+                    if (!c) continue;
+                    if (c->type == ExprType::COLUMN_REF &&
+                        c->columnRef.columnName == obe.columnName &&
+                        (obe.tableName.empty() || c->columnRef.tableName == obe.tableName)) {
+                        obe.columnIndex = i;
+                        found = true;
+                        break;
+                    }
                 }
+                if (!found) return SELECT_TABLE_ERROR::INVALID_ORDER_BY;
+            } else {
+                // numeric columnIndex-based ORDER BY: validate index is within projection
+                if (obe.columnIndex >= query.columnClauses.size()) return SELECT_TABLE_ERROR::INVALID_ORDER_BY;
             }
-            if (!found) throw std::runtime_error("ORDER BY references non-projected column: " + obe.columnName);
+        }
+
+        // Translate order-by projection indices into internal result column indices
+        // Our result rows are constructed as: [base table columns..., projected columns..., optional where]
+        size_t baseCols = schema.columns.size();
+        for (auto &obe : query.orderByClauses) {
+            // columnIndex currently refers to projection index (0-based). Shift it by baseCols
+            obe.columnIndex = baseCols + obe.columnIndex;
         }
 
         if (query.whereClause) {

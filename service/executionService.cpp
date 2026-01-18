@@ -4,6 +4,7 @@
 #include "../serialization/deserializator.h"
 #include "../query/executor/selectExecutor.h"
 #include "../query/planer/selectPlaner.h"
+#include "../query/selectQuery.h"
 #include <csv.hpp>
 #include <random>
 #include <iostream>
@@ -65,6 +66,16 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
     size_t intCount = 0;
     size_t strCount = 0;
 
+    std::vector<std::string> intNames;
+    std::vector<std::string> strNames;
+    for (const auto &col : info.info) {
+        if (col.second == "INT64") {
+            intNames.push_back(col.first);
+        } else {
+            strNames.push_back(col.first);
+        }
+    }
+
     for (const auto& t : colTypes) {
         if (t == "INT64")
             intCount++;
@@ -74,15 +85,35 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
     }
 
     csv::CSVFormat format;
-    format.delimiter(',').quote('"');
     if (q.doesCsvContainHeader)
         format.header_row(0);
     else
         format.no_header();
 
+    try {
+        std::ifstream fin(q.path);
+        if (fin) {
+            std::string firstLine;
+            while (std::getline(fin, firstLine)) {
+                if (!firstLine.empty()) break;
+            }
+            if (!firstLine.empty()) {
+                size_t commaCount = std::count(firstLine.begin(), firstLine.end(), ',');
+                size_t semiCount = std::count(firstLine.begin(), firstLine.end(), ';');
+                if (semiCount > commaCount) {
+                    format.delimiter(';');
+                } else {
+                    format.delimiter(',');
+                }
+            }
+        }
+    } catch (const std::exception &e) {
+    }
 
     std::vector<Batch> batches;
     Batch batch = make_empty_batch(intCount, strCount);
+    for (size_t i = 0; i < batch.intColumns.size() && i < intNames.size(); ++i) batch.intColumns[i].name = intNames[i];
+    for (size_t i = 0; i < batch.stringColumns.size() && i < strNames.size(); ++i) batch.stringColumns[i].name = strNames[i];
 
     if (!fs::exists(q.path)) {
         response.status = CSV_TABLE_ERROR::FILE_NOT_FOUND;
@@ -105,7 +136,6 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
         std::unordered_map<std::string, int> headerNameToIndex;
         if (q.doesCsvContainHeader) {
             auto col_names = reader.get_col_names();
-            for (size_t i = 0; i < col_names.size(); ++i) headerNameToIndex[col_names[i]] = (int)i;
         }
 
         int implicitCsvIdx = 0;
@@ -175,10 +205,16 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
         if (batch.num_rows == BATCH_SIZE) {
             batches.push_back(std::move(batch));
             batch = make_empty_batch(intCount, strCount);
+            for (size_t i = 0; i < batch.intColumns.size() && i < intNames.size(); ++i) batch.intColumns[i].name = intNames[i];
+            for (size_t i = 0; i < batch.stringColumns.size() && i < strNames.size(); ++i) batch.stringColumns[i].name = strNames[i];
             if (batches.size() > BATCH_NUMBER){
                 if (!send) {
                     changeStatus(query_id, QueryStatus::RUNNING);
                     send = !send;
+                }
+                for (auto &bb : batches) {
+                    for (size_t i = 0; i < bb.intColumns.size() && i < intNames.size(); ++i) bb.intColumns[i].name = intNames[i];
+                    for (size_t i = 0; i < bb.stringColumns.size() && i < strNames.size(); ++i) bb.stringColumns[i].name = strNames[i];
                 }
                 std::vector<std::string> tmp = std::move(serializator(batches, path, PART_LIMIT));
                 fileNames.insert(fileNames.end(), tmp.begin(), tmp.end());
@@ -192,6 +228,10 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
             changeStatus(query_id, QueryStatus::RUNNING);
             send = !send;
         }
+        for (auto &bb : batches) {
+            for (size_t i = 0; i < bb.intColumns.size() && i < intNames.size(); ++i) bb.intColumns[i].name = intNames[i];
+            for (size_t i = 0; i < bb.stringColumns.size() && i < strNames.size(); ++i) bb.stringColumns[i].name = strNames[i];
+        }
         std::vector<std::string> tmp = std::move(serializator(batches, path, PART_LIMIT));
         fileNames.insert(fileNames.end(), tmp.begin(), tmp.end());
     }
@@ -202,23 +242,56 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
 }
 
 SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
-    std::optional<TableInfo> infoOpt = getTableInfoByName(select_query.tableName);
+    SelectQuery &sq = const_cast<SelectQuery&>(select_query);
+    if (sq.tableName.empty()) {
+        auto tables = getTables();
+        if (tables.size() == 1) {
+            sq.tableName = tables.begin()->second;
+        } else {
+            return SELECT_TABLE_ERROR::TABLE_NOT_EXISTS;
+        }
+    }
+
+    std::optional<TableInfo> infoOpt = getTableInfoByName(sq.tableName);
     if (!infoOpt) {
         return SELECT_TABLE_ERROR::TABLE_NOT_EXISTS;
     }
 
     TableInfo info = *infoOpt;
 
-    auto planResult = planSelectQuery(const_cast<SelectQuery&>(select_query), info);
+    auto planResult = planSelectQuery(sq, info);
 
     if (planResult != SELECT_TABLE_ERROR::NONE) {
         return planResult;
     }
 
+
     changeStatus(queryId, QueryStatus::RUNNING);
     initResult(queryId);
 
     std::vector<MixBatch> accumulatedBatches;
+    std::vector<std::string> runFiles;
+    const size_t MEMORY_LIMIT = 4ULL * 1024ULL;
+
+    auto estimateBatchesBytes = [](const std::vector<MixBatch> &batches) {
+        size_t bytes = 0;
+        for (const auto &b : batches) {
+            for (const auto &col : b.columns) {
+                if (col.type == ValueType::INT64) {
+                    bytes += col.data.size() * sizeof(int64_t);
+                } else if (col.type == ValueType::VARCHAR) {
+                    for (const auto &v : col.data) bytes += v.stringValue.size();
+                } else if (col.type == ValueType::BOOL) {
+                    bytes += col.data.size() * sizeof(bool);
+                }
+            }
+            bytes += sizeof(b.num_rows);
+        }
+        return bytes;
+    };
+
+    log_info("schabowy");
+    log_info(std::to_string(info.files.size()));
     for (const auto &f : info.files) {
         std::string path = info.location;
         if (!path.empty() && path.back() != '/' && path.back() != '\\') path.push_back('/');
@@ -226,13 +299,79 @@ SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
 
         std::vector<Batch> batches = move(deserializator(path));
 
+        log_info("siema");
         for (auto &batch : batches) {
-            executeSelectBatch(select_query, batch, accumulatedBatches);
+            SELECT_TABLE_ERROR r = executeSelectBatch(select_query, batch, accumulatedBatches);
+            if (r != SELECT_TABLE_ERROR::NONE) {
+                log_error(std::string("selectTable: executeSelectBatch returned error code ") + std::to_string((int)r));
+            }
+            size_t est = estimateBatchesBytes(accumulatedBatches);
+            size_t accRows = 0;
+            log_info(std::string("hej ") + std::to_string(est));
+            for (const auto &b : accumulatedBatches) accRows += b.num_rows;
+            if (est > MEMORY_LIMIT) {
+                try {
+                    std::string runPath = spillBatchesToRun(accumulatedBatches, select_query.orderByClauses);
+                    log_info(std::string("selectTable: spilled run to ") + runPath);
+                    runFiles.push_back(runPath);
+                    accumulatedBatches.clear();
+                } catch (const std::exception &e) {
+                    log_error(std::string("spillBatchesToRun failed: ") + e.what());
+                }
+            }
         }
     }
 
-    orderAndLimitResult(accumulatedBatches, select_query.orderByClauses, select_query.limit);
-    modifyResult(queryId, accumulatedBatches);
+    if (!runFiles.empty()) {
+        log_info(std::string("selectTable: number of run files created=") + std::to_string(runFiles.size()));
+        if (!accumulatedBatches.empty()) {
+            try {
+                std::string runPath = spillBatchesToRun(accumulatedBatches, select_query.orderByClauses);
+                log_info(std::string("selectTable: spilled trailing accumulated batches to ") + runPath);
+                runFiles.push_back(runPath);
+                accumulatedBatches.clear();
+            } catch (const std::exception &e) {
+                log_error(std::string("spillBatchesToRun failed for trailing batches: ") + e.what());
+            }
+        }
+        MixBatch finalBatch = mergeRunFiles(runFiles, select_query.orderByClauses, select_query.limit);
+        std::vector<MixBatch> outVec;
+        outVec.push_back(std::move(finalBatch));
+        size_t baseCols = info.info.size();
+        size_t projCols = select_query.columnClauses.size();
+        std::vector<MixBatch> projectedOut;
+        projectedOut.reserve(outVec.size());
+        for (const auto &mb : outVec) {
+            MixBatch pm;
+            pm.num_rows = mb.num_rows;
+            pm.columns.resize(projCols);
+            for (size_t p = 0; p < projCols; ++p) {
+                if (baseCols + p < mb.columns.size()) pm.columns[p] = mb.columns[baseCols + p];
+                else pm.columns[p] = ColumnData();
+            }
+            projectedOut.push_back(std::move(pm));
+        }
+        modifyResult(queryId, projectedOut);
+    } else {
+        SELECT_TABLE_ERROR ord = orderAndLimitResult(accumulatedBatches, select_query.orderByClauses, select_query.limit);
+        if (ord != SELECT_TABLE_ERROR::NONE) return ord;
+        size_t tot = 0; for (const auto &b : accumulatedBatches) tot += b.num_rows;
+        size_t baseCols2 = info.info.size();
+        size_t projCols2 = select_query.columnClauses.size();
+        std::vector<MixBatch> projectedAcc;
+        projectedAcc.reserve(accumulatedBatches.size());
+        for (const auto &mb : accumulatedBatches) {
+            MixBatch pm;
+            pm.num_rows = mb.num_rows;
+            pm.columns.resize(projCols2);
+            for (size_t p = 0; p < projCols2; ++p) {
+                if (baseCols2 + p < mb.columns.size()) pm.columns[p] = mb.columns[baseCols2 + p];
+                else pm.columns[p] = ColumnData();
+            }
+            projectedAcc.push_back(std::move(pm));
+        }
+        modifyResult(queryId, projectedAcc);
+    }
 
     return SELECT_TABLE_ERROR::NONE;
 }

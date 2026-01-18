@@ -32,7 +32,9 @@ enum class CREATE_TABLE_ERROR {
 enum class SELECT_TABLE_ERROR {
     NONE,
     TABLE_NOT_EXISTS,
-    INVALID_WHERE
+    INVALID_WHERE,
+    INVALID_ORDER_BY,
+    INVALID_LIMIT
 };
 
 struct Problem {
@@ -45,7 +47,7 @@ struct CreateTableResult {
     std::vector<Problem> problem;
 };
 
-using Column = std::variant<std::vector<int64_t>, std::vector<std::string>>;
+using Column = std::variant<std::vector<int64_t>, std::vector<std::string>, std::vector<bool>>;
 
 struct QueryResult {
     int rowCount;

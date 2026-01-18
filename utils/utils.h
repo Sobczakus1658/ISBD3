@@ -51,6 +51,7 @@ json copyQueryToJson(const CopyQuery &q);
 
 json selectQueryToJson(const SelectQuery &q);
 
+
 CopyQuery jsonToCopyQuery(const json &copy_query);
 
 SelectQuery jsonToSelectQuery(const json &select_query);

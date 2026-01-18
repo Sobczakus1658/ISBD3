@@ -123,3 +123,16 @@ void addQueryDefinition(std::string id, QueryToJson query) {
         }
     }
 }
+
+void addQueryDefinitionRaw(std::string id, const json &def) {
+    json results = readLocalFile(basePath);
+    for (auto &entry : results) {
+        if (!entry.is_object()) continue;
+
+        std::string entryQid = entry.value("queryId", std::string());
+        if (entryQid == id) {
+            entry["queryDefinition"] = def;
+            saveFile(basePath, results);
+        }
+    }
+}

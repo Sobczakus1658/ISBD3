@@ -130,7 +130,8 @@ void createTableHandler(const shared_ptr<Session> session) {
             std::string response_body;
 
             if (result.problem.empty()) {
-                response_body = result.tableId;
+                json id_json = result.tableId;
+                response_body = id_json.dump();
             } else {
                 json error_response = errorResponse(result.problem);
                 response_body = error_response.dump();
@@ -209,7 +210,7 @@ void submitQueryHandler(const shared_ptr<Session> session) {
                     log_info("submitQuery handling COPY query");
                     CopyQuery copyQuery = createCopyQuery(def); 
                     
-                    addQueryDefinition(query_id, copyQuery);
+                    addQueryDefinitionRaw(query_id, def);
                     QueryCreatedResponse response = copyCSV(copyQuery, query_id);
 
                     if (response.status == CSV_TABLE_ERROR::NONE) {
@@ -224,12 +225,11 @@ void submitQueryHandler(const shared_ptr<Session> session) {
                     break;
                 } 
                 case QueryType::SELECT: {
-                    SelectQuery sq = parse(def);
-
+                    SelectQuery sq = parseSelect(def);
                     SELECT_TABLE_ERROR response = selectTable(sq, query_id);
 
                     if (response == SELECT_TABLE_ERROR::NONE){
-                        addQueryDefinition(query_id, std::move(sq));
+                        addQueryDefinitionRaw(query_id, def);
                         changeStatus(query_id, QueryStatus::COMPLETED);
                         log_info("submitQuery - select finished with status 200");
                         closeConnection(session, 200, jsonResponse.dump());
@@ -317,6 +317,13 @@ void getQueryResultHandler(const shared_ptr<Session> session) {
             return;
         }
         QueryResult qr = result.value();
+
+        if (qr.rowCount == 0) {
+            json emptyResp = json::array();
+            closeConnection(sess, 200, emptyResp.dump());
+            return;
+        }
+
         json response = json::array();
         response.push_back(prepareQueryResultResponse(qr));
         log_info("handler getQueryResultHandler finished with status 200");
@@ -375,7 +382,8 @@ double getUptimeSeconds() {
 void getSystemHandler(const shared_ptr<Session> session) {
     log_info("handler getSystemHandler entered");
     json info = getSystemInfo();
-    info["uptime"] = getUptimeSeconds();
+    int64_t uptime_secs = static_cast<int64_t>(std::floor(getUptimeSeconds()));
+    info["uptime"] = uptime_secs;
     closeConnection(session, 200, info.dump());
 }
 

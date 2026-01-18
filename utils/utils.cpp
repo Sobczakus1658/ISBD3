@@ -15,6 +15,7 @@
 
 #include "../service/executionService.h"
 #include "utils.h"
+#include "../query/selectQuery.h"
 
 using json = nlohmann::ordered_json;
 
@@ -32,8 +33,9 @@ void log_error(const std::string &msg) {
 
 json getSystemInfo() {
     json response_json;
-    response_json["interfaceVersion"] = 1.0;
-    response_json["version"] = 1.0;
+    // API expects interfaceVersion and version as strings per OpenAPI client model
+    response_json["interfaceVersion"] = std::string("1.0");
+    response_json["version"] = std::string("1.0");
     response_json["author"] = "Michał Sobczak";
     return response_json;
 }
@@ -85,6 +87,28 @@ json prepareQueryResponse(const QueryResponse &response) {
     json_info["status"] = statusToString(response.status);
     json def = buildQueryDefinition(response.query);
     json_info["isResultAvailable"] = response.isResultAvailable;
+
+    // Try to return the original stored JSON queryDefinition (if present in queries/queries.json)
+    // so that clients receive exactly the shape they submitted (matches OpenAPI schema).
+    try {
+        std::filesystem::path qpath = std::filesystem::current_path() / "queries" / "queries.json";
+        std::ifstream in(qpath);
+        if (in.is_open()) {
+            json all; in >> all;
+            for (const auto &entry : all) {
+                if (!entry.is_object()) continue;
+                std::string qid = entry.value("queryId", std::string());
+                if (qid == response.queryId && entry.contains("queryDefinition")) {
+                    json_info["queryDefinition"] = entry["queryDefinition"];
+                    return json_info;
+                }
+            }
+        }
+    } catch (const std::exception &e) {
+        // fall back to constructed definition
+    }
+
+    // fallback: construct a minimal definition from internal Query object
     json_info["queryDefinition"] = def;
 
     return json_info;
@@ -96,15 +120,26 @@ json prepareQueryResultResponse(const QueryResult& response) {
     j["rowCount"] = response.rowCount;
     j["columns"] = json::array();
 
-    for (const auto& col : response.columns) {
-        json colJson = std::visit([](const auto& vec) {
-            json columnJson = json::array();
-            for (const auto& v : vec) {
-                columnJson.push_back(v);
-            }
-            return columnJson;
-        }, col);
+    struct ColumnToJson {
+        json operator()(const std::vector<int64_t>& vec) const {
+            json a = json::array();
+            for (auto v : vec) a.push_back(v);
+            return a;
+        }
+        json operator()(const std::vector<std::string>& vec) const {
+            json a = json::array();
+            for (const auto& v : vec) a.push_back(v);
+            return a;
+        }
+        json operator()(const std::vector<bool>& vec) const {
+            json a = json::array();
+            for (bool v : vec) a.push_back(v);
+            return a;
+        }
+    };
 
+    for (const auto& col : response.columns) {
+        json colJson = std::visit(ColumnToJson{}, col);
         j["columns"].push_back(colJson);
     }
 
@@ -260,16 +295,45 @@ SelectQuery jsonToSelectQuery(const json &select_query) {
 
 json readLocalFile(const std::filesystem::path &basePath){
     json result;
+    try {
+        auto parent = basePath.parent_path();
+        if (!parent.empty() && !std::filesystem::exists(parent)) {
+            std::filesystem::create_directories(parent);
+        }
+    } catch (const std::exception &e) {
+        log_error(std::string("readLocalFile: could not create parent directory: ") + e.what());
+    }
+
     std::ifstream content(basePath);
     if (!content.is_open()) {
+        log_info(std::string("readLocalFile: file not found, returning empty array: ") + basePath.string());
         return json::array();
     }
-    content >> result;
+    try {
+        content >> result;
+    } catch (const std::exception &e) {
+        log_error(std::string("readLocalFile: failed to parse JSON from ") + basePath.string() + std::string(": ") + e.what());
+        return json::array();
+    }
     return result;
 }
 
 void saveFile(const std::filesystem::path &basePath, json results) {
+    try {
+        auto parent = basePath.parent_path();
+        if (!parent.empty() && !std::filesystem::exists(parent)) {
+            std::filesystem::create_directories(parent);
+        }
+    } catch (const std::exception &e) {
+        log_error(std::string("saveFile: could not create parent directory: ") + e.what());
+        return;
+    }
+
     std::ofstream outFile(basePath);
+    if (!outFile.is_open()) {
+        log_error(std::string("saveFile: failed to open file for writing: ") + basePath.string());
+        return;
+    }
     outFile << std::setw(2) << results << std::endl;
     outFile.close();
 }

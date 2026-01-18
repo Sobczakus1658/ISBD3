@@ -3,4 +3,4 @@
 
 using json = nlohmann::ordered_json;
 
-SelectQuery parse(const json& def);
+SelectQuery parseSelect(const json& def);
