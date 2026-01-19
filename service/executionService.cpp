@@ -5,6 +5,8 @@
 #include "../query/executor/selectExecutor.h"
 #include "../query/planer/selectPlaner.h"
 #include "../query/selectQuery.h"
+#include "../query/evaluation/expression_cache.h"
+#include "../query/evaluation/evalColumnExpression.h"
 #include <csv.hpp>
 #include <random>
 #include <iostream>
@@ -56,6 +58,12 @@ void revert_path(fs::path tableDir){
 }
 QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
     QueryCreatedResponse response;
+    // Reject empty destination table name early
+    if (q.destinationTableName.empty()) {
+        response.status = CSV_TABLE_ERROR::TABLE_NOT_FOUND;
+        return response;
+    }
+
     std::optional<TableInfo> infoOpt = getTableInfoByName(q.destinationTableName);
     if (!infoOpt) {
         response.status = CSV_TABLE_ERROR::TABLE_NOT_FOUND;
@@ -293,7 +301,7 @@ SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
 
     TableInfo info;
     bool haveTableInfo = false;
-    log_info("kuirwa");
+    // Do not allow queries with empty table name — require explicit table
     if (sq.tableName.empty()) {
         log_info("chujasek");
         // If query references table columns, try to pick the single table if DB has exactly one table.
@@ -339,6 +347,37 @@ SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
 
     std::vector<MixBatch> accumulatedBatches;
     std::vector<std::string> runFiles;
+
+    // Special-case: table-less queries (e.g., SELECT 1, SELECT TRUE, SELECT f())
+    // If there are no backing files and the table name is empty, evaluate the
+    // projections once and return a single-row result. This avoids returning
+    // an empty result when the query is independent of table data.
+    if (info.name.empty() && info.files.empty()) {
+        size_t projCols = select_query.columnClauses.size();
+        MixBatch mb;
+        mb.num_rows = 1;
+        mb.columns.resize(projCols);
+
+        // per-row expression cache to enable CSE within this synthetic row
+        ExpressionCache cache;
+        ResultRow row;
+        row.values.clear();
+
+        for (size_t p = 0; p < projCols; ++p) {
+            const auto &exprPtr = select_query.columnClauses[p];
+            if (!exprPtr) continue;
+            Value v = evalColumnExpression(*exprPtr, row, &cache);
+            ColumnData cd;
+            cd.type = exprPtr->resultType;
+            cd.data.push_back(v);
+            mb.columns[p] = std::move(cd);
+        }
+
+        std::vector<MixBatch> outVec;
+        outVec.push_back(std::move(mb));
+        modifyResult(queryId, outVec);
+        return SELECT_TABLE_ERROR::NONE;
+    }
 
     // MEMORY_LIMIT: read from env var ISBD_MEMORY_LIMIT (bytes) or default to 4 MiB
     size_t MEMORY_LIMIT = 4ULL * 1024ULL * 1024ULL;

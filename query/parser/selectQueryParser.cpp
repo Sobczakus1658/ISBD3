@@ -29,6 +29,7 @@ FunctionName parseFunction(const json& j) {
 
     if (fn == "STRLEN") return FunctionName::STRLEN;
     if (fn == "CONCAT") return FunctionName::CONCAT;
+    if (fn == "REPLACE") return FunctionName::REPLACE;
     if (fn == "UPPER") return FunctionName::UPPER;
     if (fn == "LOWER") return FunctionName::LOWER;
 

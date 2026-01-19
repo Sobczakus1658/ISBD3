@@ -14,6 +14,7 @@ using ColumnExprPtr = std::unique_ptr<ColumnExpression>;
 enum class FunctionName {
     STRLEN,
     CONCAT,
+    REPLACE,
     UPPER,
     LOWER
 };

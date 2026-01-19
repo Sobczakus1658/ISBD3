@@ -343,7 +343,21 @@ bool validateCreateTableRequest(const json &parsed, json &out_create, std::vecto
 
     if (parsed.is_object() && parsed.contains("name") && parsed.contains("columns") && parsed["name"].is_string() && parsed["columns"].is_array()) {
         std::string tname = parsed["name"].get<std::string>();
+        if (tname.empty()) {
+            Problem p; p.error = "Invalid table name: empty";
+            problems.push_back(p);
+            return false;
+        }
+
+        // Columns must be a non-empty array
+        if (parsed["columns"].empty()) {
+            Problem p; p.error = "Invalid columns: empty";
+            problems.push_back(p);
+            return false;
+        }
+
         json columns_obj = json::object();
+        std::unordered_set<std::string> seen_names;
         for (const auto &col : parsed["columns"]) {
             if (!col.is_object() || !col.contains("name") || !col.contains("type") || !col["name"].is_string() || !col["type"].is_string()) {
                 Problem p; p.error = "Invalid column definition";
@@ -351,7 +365,26 @@ bool validateCreateTableRequest(const json &parsed, json &out_create, std::vecto
                 continue;
             }
             std::string cname = col["name"].get<std::string>();
+            if (cname.empty()) {
+                Problem p; p.error = "Invalid column name: empty";
+                problems.push_back(p);
+                continue;
+            }
+            if (seen_names.find(cname) != seen_names.end()) {
+                Problem p; p.error = std::string("Duplicate column name: ") + cname;
+                problems.push_back(p);
+                continue;
+            }
+            seen_names.insert(cname);
+
             std::string ctype = col["type"].get<std::string>();
+            // Validate allowed types
+            if (ctype != "INT64" && ctype != "VARCHAR" && ctype != "BOOL") {
+                Problem p; p.error = std::string("Invalid column type: ") + ctype;
+                problems.push_back(p);
+                continue;
+            }
+
             columns_obj[cname] = ctype;
         }
         if (!problems.empty()) return false;

@@ -93,6 +93,28 @@ static Value evalColumnExpressionInternal(const ColumnExpression &expr, const Re
                 for (auto &c : s) c = std::tolower(c);
                 return {ValueType::VARCHAR, 0, s};
             }
+            if (f.name == FunctionName::REPLACE) {
+                // expects: REPLACE(source, search, replace)
+                if (f.args.size() != 3 || !f.args[0] || !f.args[1] || !f.args[2])
+                    throw std::runtime_error("REPLACE missing args");
+                auto src = evalColumnExpression(*f.args[0], row, cache);
+                auto search = evalColumnExpression(*f.args[1], row, cache);
+                auto repl = evalColumnExpression(*f.args[2], row, cache);
+
+                std::string s = src.stringValue;
+                const std::string &pat = search.stringValue;
+                const std::string &rep = repl.stringValue;
+
+                if (!pat.empty()) {
+                    size_t pos = 0;
+                    while ((pos = s.find(pat, pos)) != std::string::npos) {
+                        s.replace(pos, pat.size(), rep);
+                        pos += rep.size();
+                    }
+                }
+                // If pat is empty, behavior: return original string (no-op)
+                return {ValueType::VARCHAR, 0, s};
+            }
             return Value{ValueType::INT64, 0, std::string(), false};
         }
     }

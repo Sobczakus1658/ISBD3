@@ -96,6 +96,15 @@ void planExpression(ColumnExpression &expr, const Schema &schema) {
             expr.resultType = ValueType::VARCHAR;
             return;
 
+        case FunctionName::REPLACE:
+            if (expr.function.args.size() != 3 ||
+                expr.function.args[0]->resultType != ValueType::VARCHAR ||
+                expr.function.args[1]->resultType != ValueType::VARCHAR ||
+                expr.function.args[2]->resultType != ValueType::VARCHAR)
+                throw std::runtime_error("REPLACE expects VARCHAR, VARCHAR, VARCHAR");
+            expr.resultType = ValueType::VARCHAR;
+            return;
+
         case FunctionName::UPPER:
         case FunctionName::LOWER:
             if (expr.function.args.size() != 1 ||
