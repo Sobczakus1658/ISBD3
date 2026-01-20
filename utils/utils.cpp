@@ -33,9 +33,8 @@ void log_error(const std::string &msg) {
 
 json getSystemInfo() {
     json response_json;
-    // API expects interfaceVersion and version as strings per OpenAPI client model
-    response_json["interfaceVersion"] = std::string("1.0");
-    response_json["version"] = std::string("1.0");
+    response_json["interfaceVersion"] = std::string("2.0");
+    response_json["version"] = std::string("2.0");
     response_json["author"] = "Michał Sobczak";
     return response_json;
 }
@@ -88,8 +87,7 @@ json prepareQueryResponse(const QueryResponse &response) {
     json def = buildQueryDefinition(response.query);
     json_info["isResultAvailable"] = response.isResultAvailable;
 
-    // Try to return the original stored JSON queryDefinition (if present in queries/queries.json)
-    // so that clients receive exactly the shape they submitted (matches OpenAPI schema).
+
     try {
         std::filesystem::path qpath = std::filesystem::current_path() / "queries" / "queries.json";
         std::ifstream in(qpath);
@@ -105,10 +103,8 @@ json prepareQueryResponse(const QueryResponse &response) {
             }
         }
     } catch (const std::exception &e) {
-        // fall back to constructed definition
     }
 
-    // fallback: construct a minimal definition from internal Query object
     json_info["queryDefinition"] = def;
 
     return json_info;
@@ -349,7 +345,6 @@ bool validateCreateTableRequest(const json &parsed, json &out_create, std::vecto
             return false;
         }
 
-        // Columns must be a non-empty array
         if (parsed["columns"].empty()) {
             Problem p; p.error = "Invalid columns: empty";
             problems.push_back(p);
@@ -378,7 +373,6 @@ bool validateCreateTableRequest(const json &parsed, json &out_create, std::vecto
             seen_names.insert(cname);
 
             std::string ctype = col["type"].get<std::string>();
-            // Validate allowed types
             if (ctype != "INT64" && ctype != "VARCHAR" && ctype != "BOOL") {
                 Problem p; p.error = std::string("Invalid column type: ") + ctype;
                 problems.push_back(p);

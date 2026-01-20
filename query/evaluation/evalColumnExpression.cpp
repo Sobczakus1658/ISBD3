@@ -15,7 +15,6 @@ Value compare(const Value &a, const Value &b, Op op) {
     return Value{ValueType::INT64, 0, std::string(), false};
 }
 
-// Internal evaluator that assumes caller manages caching for this node.
 static Value evalColumnExpressionInternal(const ColumnExpression &expr, const ResultRow &row, ExpressionCache *cache) {
     switch (expr.type) {
         case ExprType::LITERAL:
@@ -94,7 +93,6 @@ static Value evalColumnExpressionInternal(const ColumnExpression &expr, const Re
                 return {ValueType::VARCHAR, 0, s};
             }
             if (f.name == FunctionName::REPLACE) {
-                // expects: REPLACE(source, search, replace)
                 if (f.args.size() != 3 || !f.args[0] || !f.args[1] || !f.args[2])
                     throw std::runtime_error("REPLACE missing args");
                 auto src = evalColumnExpression(*f.args[0], row, cache);
@@ -112,7 +110,6 @@ static Value evalColumnExpressionInternal(const ColumnExpression &expr, const Re
                         pos += rep.size();
                     }
                 }
-                // If pat is empty, behavior: return original string (no-op)
                 return {ValueType::VARCHAR, 0, s};
             }
             return Value{ValueType::INT64, 0, std::string(), false};
@@ -122,13 +119,10 @@ static Value evalColumnExpressionInternal(const ColumnExpression &expr, const Re
 }
 
 Value evalColumnExpression(const ColumnExpression &expr, const ResultRow &row, ExpressionCache *cache) {
-    // If caching is provided, use it for this node. Cache keyed by hashExpression.
     if (cache) {
         size_t h = hashExpression(expr);
-        // Use getOrCompute so ExpressionCache logs hits/misses consistently.
         return cache->getOrCompute(h, [&]{ return evalColumnExpressionInternal(expr, row, cache); });
     }
 
-    // No cache provided: compute directly
     return evalColumnExpressionInternal(expr, row, nullptr);
 }

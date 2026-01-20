@@ -171,16 +171,12 @@ SELECT_TABLE_ERROR planSelectQuery(
                 }
                 if (!found) return SELECT_TABLE_ERROR::INVALID_ORDER_BY;
             } else {
-                // numeric columnIndex-based ORDER BY: validate index is within projection
                 if (obe.columnIndex >= query.columnClauses.size()) return SELECT_TABLE_ERROR::INVALID_ORDER_BY;
             }
         }
 
-        // Translate order-by projection indices into internal result column indices
-        // Our result rows are constructed as: [base table columns..., projected columns..., optional where]
         size_t baseCols = schema.columns.size();
         for (auto &obe : query.orderByClauses) {
-            // columnIndex currently refers to projection index (0-based). Shift it by baseCols
             obe.columnIndex = baseCols + obe.columnIndex;
         }
 

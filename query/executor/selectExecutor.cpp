@@ -1,6 +1,3 @@
-
-// implementation of select executor
-
 #include "selectExecutor.h"
 #include <iostream>
 #include <algorithm>
@@ -25,6 +22,8 @@
 using json = nlohmann::ordered_json;
 #include "../../utils/utils.h"
 
+const size_t MEMORY_LIMIT = (size_t)4 * 1024 * 1024;
+
 SELECT_TABLE_ERROR executeSelectBatch(const SelectQuery &query, const Batch &batch, std::vector<MixBatch> &outBatches){
     MixBatch mb;
     auto r = transformBatch(query, batch, mb);
@@ -34,10 +33,8 @@ SELECT_TABLE_ERROR executeSelectBatch(const SelectQuery &query, const Batch &bat
 }
 
 SELECT_TABLE_ERROR transformBatch(const SelectQuery &query, const Batch &batch, MixBatch &outBatch) {
-    log_info("chuj");
     TableInfo info;
     if (query.tableName.empty()) {
-        // table-less query (no FROM) -> empty table info
         info.name = std::string();
         info.id = 0;
         info.info.clear();
@@ -105,43 +102,13 @@ SELECT_TABLE_ERROR transformBatch(const SelectQuery &query, const Batch &batch, 
         exprCount[h]++;
         exprMap.emplace(h, pc.get());
     }
-
-    // Helper to produce a short textual representation of an expression for logging
-    auto exprToShortString = [&](const ColumnExpression *e) {
-        if (!e) return std::string("<null>");
-        switch (e->type) {
-            case ExprType::LITERAL: return std::string("LIT");
-            case ExprType::COLUMN_REF: return std::string("COL:") + e->columnRef.columnName;
-            case ExprType::UNARY_OP: return std::string("UNARY");
-            case ExprType::BINARY_OP: return std::string("BINARY");
-            case ExprType::FUNCTION: return std::string("FUNC:") + std::to_string((int)e->function.name);
-        }
-        return std::string("?");
-    };
-
-    // Log expr counts for diagnosis
-    if (!exprCount.empty()) {
-        std::string cc = "transformBatch: exprCount:";
-        for (const auto &kv : exprCount) {
-            const ColumnExpression *e = nullptr;
-            auto it = exprMap.find(kv.first);
-            if (it != exprMap.end()) e = it->second;
-            cc += std::string(" [hash=") + std::to_string(kv.first) + std::string(" cnt=") + std::to_string(kv.second) + std::string(" expr=") + exprToShortString(e);
-        }
-        log_info(cc);
-    }
-
     std::vector<size_t> precomputeHashes;
     for (const auto &kv : exprCount) {
         if (kv.second > 1) {
             precomputeHashes.push_back(kv.first);
         }
     }
-    if (!precomputeHashes.empty()) {
-        std::string list = "transformBatch: will precompute hashes:";
-        for (auto h : precomputeHashes) list += std::string(" ") + std::to_string(h);
-        log_info(list);
-    }
+
     for (size_t rowIdx = 0; rowIdx < batch.num_rows; ++rowIdx) {
         ResultRow rawRow;
         rawRow.values.reserve(baseCols);
@@ -189,14 +156,12 @@ SELECT_TABLE_ERROR transformBatch(const SelectQuery &query, const Batch &batch, 
             auto it = exprMap.find(h);
             if (it == exprMap.end()) continue;
             const ColumnExpression *expr = it->second;
-            // evaluate with cache so subexpressions are stored and reused
             (void)evalColumnExpression(*expr, rawRow, &cache);
         }
 
         bool wherePass = true;
         if (query.whereClause) {
             size_t wh = hashExpression(*query.whereClause);
-            if (cache.contains(wh)) log_info("hit cache (where)");
             Value wv = evalColumnExpression(*query.whereClause, rawRow, &cache);
             if (wv.type != ValueType::BOOL) return SELECT_TABLE_ERROR::INVALID_WHERE;
             wherePass = wv.boolValue;
@@ -208,7 +173,6 @@ SELECT_TABLE_ERROR transformBatch(const SelectQuery &query, const Batch &batch, 
 
         for (size_t p = 0; p < projCols; ++p) {
             size_t ph = hashExpression(*query.columnClauses[p]);
-            if (cache.contains(ph)) log_info("hit cache (proj)");
             Value v = evalColumnExpression(*query.columnClauses[p], rawRow, &cache);
             outBatch.columns[baseCols + p].type = v.type;
             outBatch.columns[baseCols + p].data.push_back(v);
@@ -271,11 +235,6 @@ SELECT_TABLE_ERROR orderAndLimitResult(std::vector<MixBatch> &batches,
     }
 
     size_t estimatedBytes = estRowSize * totalRows;
-    const size_t MEMORY_LIMIT = (size_t)32 * 1024 * 1024; // 32 MB
-    log_info(std::string("orderAndLimitResult: totalRows=") + std::to_string(totalRows) + 
-             std::string(" estBytes=") + std::to_string(estimatedBytes) + 
-             std::string(" memoryLimit=") + std::to_string(MEMORY_LIMIT));
-
     auto rowCompare = [&](const ResultRow &a, const ResultRow &b) {
         for (const auto &o : orderBy) {
             const Value &va = a.values[o.columnIndex];
@@ -295,10 +254,6 @@ SELECT_TABLE_ERROR orderAndLimitResult(std::vector<MixBatch> &batches,
         return false;
     };
 
-    // If small enough, fall back to in-memory sort
-    // Debug: print estimatedBytes and MEMORY_LIMIT right here
-    log_info(std::string("orderAndLimitResult: estimatedBytes=") + std::to_string(estimatedBytes) +
-             std::string(" MEMORY_LIMIT=") + std::to_string(MEMORY_LIMIT));
     if (estimatedBytes <= MEMORY_LIMIT) {
         std::vector<ResultRow> allRows;
         allRows.reserve(totalRows);
@@ -316,8 +271,7 @@ SELECT_TABLE_ERROR orderAndLimitResult(std::vector<MixBatch> &batches,
         }
 
     if (!orderBy.empty()) std::sort(allRows.begin(), allRows.end(), rowCompare);
-    log_info(std::string("orderAndLimitResult: using in-memory sort, rows=") + std::to_string(allRows.size()));
-
+    
         size_t take = allRows.size();
         if (limit.has_value() && take > limit.value()) take = limit.value();
 
@@ -335,7 +289,6 @@ SELECT_TABLE_ERROR orderAndLimitResult(std::vector<MixBatch> &batches,
         return SELECT_TABLE_ERROR::NONE;
     }
 
-    // External merge-sort
     log_info(std::string("orderAndLimitResult: using external merge-sort"));
     auto serializeRow = [&](const ResultRow &row) {
         json j = json::array();
@@ -403,8 +356,6 @@ SELECT_TABLE_ERROR orderAndLimitResult(std::vector<MixBatch> &batches,
     }
     flushRun();
 
-    // k-way merge
-    // Log run files to be merged
     if (!runFiles.empty()) {
         std::string rfList = "orderAndLimitResult: merging run files:";
         for (const auto &rf : runFiles) rfList += std::string(" ") + rf;
@@ -456,9 +407,7 @@ SELECT_TABLE_ERROR orderAndLimitResult(std::vector<MixBatch> &batches,
     return SELECT_TABLE_ERROR::NONE;
 }
 
-// Spill given in-memory MixBatches into a run file (JSON lines) and return the file path
 std::string spillBatchesToRun(const std::vector<MixBatch> &batches, const std::vector<OrderByExpression> &orderBy) {
-    // flatten batches into rows
     size_t numCols = 0;
     if (!batches.empty()) numCols = batches[0].columns.size();
     std::vector<ResultRow> rows;
@@ -510,15 +459,11 @@ std::string spillBatchesToRun(const std::vector<MixBatch> &batches, const std::v
         }
         ofs << j.dump() << '\n';
     }
-    // The above is placeholder; serialize properly
     ofs.close();
-    // Debug: report created run file and number of rows written
-    log_info(std::string("spillBatchesToRun: wrote run file=") + path + std::string(" rows=") + std::to_string(rows.size()));
     return path;
 }
 
 MixBatch mergeRunFiles(const std::vector<std::string> &runFiles, const std::vector<OrderByExpression> &orderBy, const std::optional<size_t> &limit) {
-    // Reuse k-way merge logic from orderAndLimitResult
     struct HeapItem { ResultRow row; size_t fileIdx; };
     auto rowCompareLocal = [&](const ResultRow &a, const ResultRow &b) {
         for (const auto &o : orderBy) {
@@ -540,7 +485,6 @@ MixBatch mergeRunFiles(const std::vector<std::string> &runFiles, const std::vect
     auto cmpHeap = [&](const HeapItem &a, const HeapItem &b) { return rowCompareLocal(b.row, a.row); };
     std::priority_queue<HeapItem, std::vector<HeapItem>, decltype(cmpHeap)> heap(cmpHeap);
 
-    // Debug: list run files to be merged
     if (!runFiles.empty()) {
         std::string rfList = "mergeRunFiles: merging run files:";
         for (const auto &rf : runFiles) rfList += std::string(" ") + rf;
@@ -581,7 +525,6 @@ MixBatch mergeRunFiles(const std::vector<std::string> &runFiles, const std::vect
         if (std::getline(ifs[idx], line)) heap.push(HeapItem{deserializeRowLocal(line), idx});
     }
 
-    // close and remove
     for (size_t i = 0; i < ifs.size(); ++i) {
         ifs[i].close();
         std::remove(runFiles[i].c_str());

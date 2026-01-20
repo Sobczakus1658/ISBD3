@@ -14,6 +14,7 @@
 
 
 namespace fs = std::filesystem;
+size_t MEMORY_LIMIT = 4ULL * 1024ULL * 1024ULL;
 
 Batch make_empty_batch(size_t numIntCols, size_t numStrCols) {
     Batch b;
@@ -58,7 +59,6 @@ void revert_path(fs::path tableDir){
 }
 QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
     QueryCreatedResponse response;
-    // Reject empty destination table name early
     if (q.destinationTableName.empty()) {
         response.status = CSV_TABLE_ERROR::TABLE_NOT_FOUND;
         return response;
@@ -246,8 +246,6 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
     }
     log_info(std::string("batch.num_rows") + std::to_string(batch.num_rows));
 
-    // Flush any remaining batches: either there are some full batches accumulated
-    // (batches.size() > 0) or there is a partial batch in `batch` (batch.num_rows > 0).
     if (!batches.empty() || batch.num_rows > 0) {
         if (batch.num_rows > 0) {
             batches.push_back(std::move(batch));
@@ -275,9 +273,7 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
 
 SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
     SelectQuery &sq = const_cast<SelectQuery&>(select_query);
-    // Determine whether the query actually references table columns.
     auto exprUsesColumnRef = [&](const ColumnExpression &expr) {
-        // recursive lambda: check node and children
         std::function<bool(const ColumnExpression&)> visit;
         visit = [&](const ColumnExpression &e) -> bool {
             switch (e.type) {
@@ -301,10 +297,7 @@ SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
 
     TableInfo info;
     bool haveTableInfo = false;
-    // Do not allow queries with empty table name — require explicit table
     if (sq.tableName.empty()) {
-        log_info("chujasek");
-        // If query references table columns, try to pick the single table if DB has exactly one table.
         bool usesCols = false;
         if (sq.whereClause) usesCols = usesCols || exprUsesColumnRef(*sq.whereClause);
         for (const auto &pc : sq.columnClauses) if (pc) usesCols = usesCols || exprUsesColumnRef(*pc);
@@ -317,7 +310,6 @@ SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
                 return SELECT_TABLE_ERROR::TABLE_NOT_EXISTS;
             }
         } else {
-            // Table-less query (e.g., SELECT 1+2 or SELECT f() ). We'll use empty TableInfo.
             info.name = std::string();
             info.id = 0;
             info.info.clear();
@@ -348,17 +340,12 @@ SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
     std::vector<MixBatch> accumulatedBatches;
     std::vector<std::string> runFiles;
 
-    // Special-case: table-less queries (e.g., SELECT 1, SELECT TRUE, SELECT f())
-    // If there are no backing files and the table name is empty, evaluate the
-    // projections once and return a single-row result. This avoids returning
-    // an empty result when the query is independent of table data.
     if (info.name.empty() && info.files.empty()) {
         size_t projCols = select_query.columnClauses.size();
         MixBatch mb;
         mb.num_rows = 1;
         mb.columns.resize(projCols);
 
-        // per-row expression cache to enable CSE within this synthetic row
         ExpressionCache cache;
         ResultRow row;
         row.values.clear();
@@ -379,37 +366,22 @@ SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
         return SELECT_TABLE_ERROR::NONE;
     }
 
-    // MEMORY_LIMIT: read from env var ISBD_MEMORY_LIMIT (bytes) or default to 4 MiB
-    size_t MEMORY_LIMIT = 4ULL * 1024ULL * 1024ULL;
-    if (const char *env = std::getenv("ISBD_MEMORY_LIMIT")) {
-        try {
-            MEMORY_LIMIT = std::stoull(env);
-        } catch (...) {
-            log_error(std::string("Invalid ISBD_MEMORY_LIMIT value: ") + env);
-        }
-    }
 
     auto estimateBatchesBytes = [](const std::vector<MixBatch> &batches) {
         size_t bytes = 0;
-        // Conservative estimate: count sizeof(Value) per element + string sizes for VARCHAR
         for (const auto &b : batches) {
             for (const auto &col : b.columns) {
-                // count vector<Value> metadata (approx)
                 bytes += sizeof(col);
-                // count Value objects
                 bytes += col.data.size() * sizeof(decltype(col.data)::value_type);
                 if (col.type == ValueType::VARCHAR) {
                     for (const auto &v : col.data) bytes += v.stringValue.size();
                 }
             }
-            // small overhead per batch
             bytes += sizeof(b.num_rows);
         }
         return bytes;
     };
 
-    log_info("schabowy");
-    log_info(std::to_string(info.files.size()));
     for (const auto &f : info.files) {
         std::string path = info.location;
         if (!path.empty() && path.back() != '/' && path.back() != '\\') path.push_back('/');
@@ -428,7 +400,6 @@ SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
             if (est > MEMORY_LIMIT) {
                 try {
                     std::string runPath = spillBatchesToRun(accumulatedBatches, select_query.orderByClauses);
-                    log_info(std::string("selectTable: spilled run to ") + runPath);
                     runFiles.push_back(runPath);
                     accumulatedBatches.clear();
                 } catch (const std::exception &e) {
@@ -439,11 +410,9 @@ SELECT_TABLE_ERROR selectTable(const SelectQuery &select_query, string queryId){
     }
 
     if (!runFiles.empty()) {
-        log_info(std::string("selectTable: number of run files created=") + std::to_string(runFiles.size()));
         if (!accumulatedBatches.empty()) {
             try {
                 std::string runPath = spillBatchesToRun(accumulatedBatches, select_query.orderByClauses);
-                log_info(std::string("selectTable: spilled trailing accumulated batches to ") + runPath);
                 runFiles.push_back(runPath);
                 accumulatedBatches.clear();
             } catch (const std::exception &e) {

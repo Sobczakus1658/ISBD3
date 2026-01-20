@@ -208,7 +208,6 @@ void submitQueryHandler(const shared_ptr<Session> session) {
             switch(type) {
                 case QueryType::COPY: {
                     log_info("submitQuery handling COPY query");
-                    log_info(def.dump());
                     CopyQuery copyQuery = createCopyQuery(def); 
                     
                     addQueryDefinitionRaw(query_id, def);

@@ -34,7 +34,6 @@ size_t hashExpression(const ColumnExpression &expr) {
             break;
 
         case ExprType::COLUMN_REF:
-            // use resolved index (if set) and column name as fallback
             mixHash(h, std::hash<std::string>{}(expr.columnRef.columnName));
             mixHash(h, std::hash<size_t>{}(expr.columnRef.index));
             break;
@@ -51,7 +50,6 @@ size_t hashExpression(const ColumnExpression &expr) {
             size_t hl = hashExpression(*expr.binary.left);
             size_t hr = hashExpression(*expr.binary.right);
 
-            // commutative operators: order-independent combination
             bool comm = (expr.binary.op == Operator::ADD || expr.binary.op == Operator::MULTIPLY ||
                          expr.binary.op == Operator::AND || expr.binary.op == Operator::OR ||
                          expr.binary.op == Operator::EQUAL || expr.binary.op == Operator::NOT_EQUAL);
@@ -67,7 +65,6 @@ size_t hashExpression(const ColumnExpression &expr) {
 
         case ExprType::FUNCTION: {
             mixHash(h, (size_t)expr.function.name);
-            // functions are order-sensitive
             for (const auto &arg : expr.function.args) {
                 if (arg) mixHash(h, hashExpression(*arg));
             }
