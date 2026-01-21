@@ -13,6 +13,7 @@
 #include <optional>
 #include <nlohmann/json.hpp>
 #include <chrono>
+#include <utility>
 
 #include "corvusoft/restbed/settings.hpp"
 #include "corvusoft/restbed/resource.hpp"
@@ -24,6 +25,8 @@
 
 #include "service/executionService.h"
 #include "utils/utils.h"
+#include "query/parser/selectQueryParser.h"
+
 
 
 using json = nlohmann::ordered_json;
@@ -123,17 +126,19 @@ void createTableHandler(const shared_ptr<Session> session) {
 
             CreateTableResult result = createTable(to_create);
 
-            json response_json;
             int status = 200;
+            std::string response_body;
 
             if (result.problem.empty()) {
-                response_json = result.tableId;
+                json id_json = result.tableId;
+                response_body = id_json.dump();
             } else {
-                response_json = errorResponse(result.problem);
+                json error_response = errorResponse(result.problem);
+                response_body = error_response.dump();
                 status = 400;
             }
             log_info("handler createTableHandler finished with status " + std::to_string(status));
-            closeConnection(session, status, response_json.dump());
+            closeConnection(session, status, response_body);
         }
     );
 }
@@ -205,7 +210,7 @@ void submitQueryHandler(const shared_ptr<Session> session) {
                     log_info("submitQuery handling COPY query");
                     CopyQuery copyQuery = createCopyQuery(def); 
                     
-                    addQueryDefinition(query_id, copyQuery);
+                    addQueryDefinitionRaw(query_id, def);
                     QueryCreatedResponse response = copyCSV(copyQuery, query_id);
 
                     if (response.status == CSV_TABLE_ERROR::NONE) {
@@ -220,18 +225,17 @@ void submitQueryHandler(const shared_ptr<Session> session) {
                     break;
                 } 
                 case QueryType::SELECT: {
-                    SelectQuery sq;
-                    sq.tableName = def["tableName"];
-                    addQueryDefinition(query_id, sq);
+                    SelectQuery sq = parseSelect(def);
                     SELECT_TABLE_ERROR response = selectTable(sq, query_id);
 
                     if (response == SELECT_TABLE_ERROR::NONE){
+                        addQueryDefinitionRaw(query_id, def);
                         changeStatus(query_id, QueryStatus::COMPLETED);
                         log_info("submitQuery - select finished with status 200");
                         closeConnection(session, 200, jsonResponse.dump());
                         return;
                     }
-                    
+
                     changeStatus(query_id, QueryStatus::FAILED);
                     string error = "Table " + sq.tableName + " does not exist" ;
                     log_info("submitQuery - select finished with status 400");
@@ -313,6 +317,13 @@ void getQueryResultHandler(const shared_ptr<Session> session) {
             return;
         }
         QueryResult qr = result.value();
+
+        if (qr.rowCount == 0) {
+            json emptyResp = json::array();
+            closeConnection(sess, 200, emptyResp.dump());
+            return;
+        }
+
         json response = json::array();
         response.push_back(prepareQueryResultResponse(qr));
         log_info("handler getQueryResultHandler finished with status 200");

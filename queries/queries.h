@@ -4,7 +4,7 @@
 #include <vector>
 #include <optional>
 
-using json = nlohmann::ordered_json;;
+using json = nlohmann::ordered_json;
 
 void initQuery(std::string id);
 
@@ -15,4 +15,6 @@ json getQueries();
 void changeStatus(std::string id, QueryStatus status);
 
 void addQueryDefinition(std::string id, QueryToJson query);
+
+void addQueryDefinitionRaw(std::string id, const json &def);
 

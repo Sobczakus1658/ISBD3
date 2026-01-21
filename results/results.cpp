@@ -27,29 +27,38 @@ std::optional<QueryResult> getQueryResult(const std::string &id, int rowLimit){
             for (const auto &col : entry["columns"]) {
                 if (!col.is_array()) continue;
 
-                bool hasString = false;
-                for (size_t i = 0; i < col.size() && (int)i < to_take; ++i) {
-                    const auto &v = col[i];
-                    if (v.is_string()) { hasString = true; break; }
-                }
+                        bool hasString = false;
+                        bool hasBool = false;
+                        for (size_t i = 0; i < col.size() && (int)i < to_take; ++i) {
+                            const auto &v = col[i];
+                            if (v.is_string()) { hasString = true; break; }
+                            if (v.is_boolean()) { hasBool = true; break; }
+                        }
 
-                if (hasString) {
-                    std::vector<std::string> vec;
-                    for (int i = 0; i < to_take && (size_t)i < col.size(); ++i) {
-                        const auto &v = col[i];
-                        if (v.is_string()) vec.push_back(v.get<std::string>());
-                        else vec.push_back(v.dump());
-                    }
-                    result.columns.push_back(std::move(vec));
-                } else {
-                    std::vector<int64_t> vec;
-                    int take = std::min((int)col.size(), to_take);
-                    for (int i = 0; i < take; ++i) {
-                        const auto &v = col[i];
-                        vec.push_back(v.get<int64_t>());
-                    }
-                    result.columns.push_back(std::move(vec));
-                }
+                        if (hasString) {
+                            std::vector<std::string> vec;
+                            for (int i = 0; i < to_take && (size_t)i < col.size(); ++i) {
+                                const auto &v = col[i];
+                                if (v.is_string()) vec.push_back(v.get<std::string>());
+                                else vec.push_back(v.dump());
+                            }
+                            result.columns.push_back(std::move(vec));
+                        } else if (hasBool) {
+                            std::vector<bool> vec;
+                            for (int i = 0; i < to_take && (size_t)i < col.size(); ++i) {
+                                const auto &v = col[i];
+                                vec.push_back(v.get<bool>());
+                            }
+                            result.columns.push_back(std::move(vec));
+                        } else {
+                            std::vector<int64_t> vec;
+                            int take = std::min((int)col.size(), to_take);
+                            for (int i = 0; i < take; ++i) {
+                                const auto &v = col[i];
+                                vec.push_back(v.get<int64_t>());
+                            }
+                            result.columns.push_back(std::move(vec));
+                        }
             }
         }
 
@@ -71,7 +80,7 @@ void initResult(std::string id){
     saveFile(basePath, results);
 }
 
-void modifyResult(std::string id, vector<Batch>& batches){
+void modifyResult(std::string id, std::vector<MixBatch>& batches){
     json results = readLocalFile(basePath);
 
     auto it = std::find_if(results.begin(), results.end(),
@@ -86,7 +95,7 @@ void modifyResult(std::string id, vector<Batch>& batches){
 
     size_t totalColumns = 0;
     if (!batches.empty()) {
-        totalColumns = batches[0].intColumns.size() + batches[0].stringColumns.size();
+        totalColumns = batches[0].columns.size();
     }
 
     if (!entry.contains("columns") || entry["columns"].is_null()) {
@@ -101,7 +110,6 @@ void modifyResult(std::string id, vector<Batch>& batches){
         entry["columns"] = json::array();
     }
 
-
     if (entry["columns"].size() < totalColumns) {
         for (size_t i = entry["columns"].size(); i < totalColumns; ++i) {
             entry["columns"].push_back(json::array());
@@ -110,15 +118,12 @@ void modifyResult(std::string id, vector<Batch>& batches){
 
     for (const auto& batch : batches) {
        size_t colIdx = 0;
-       for (const auto& col : batch.intColumns) {
-           for (auto val : col.column) {
-               entry["columns"][colIdx].push_back(val);
-           }
-           colIdx++;
-       }
-       for (const auto& col : batch.stringColumns) {
-           for (const auto& val : col.column) {
-               entry["columns"][colIdx].push_back(val);
+       for (const auto& col : batch.columns) {
+           for (const auto& val : col.data) {
+               if (val.type == ValueType::INT64) entry["columns"][colIdx].push_back(val.intValue);
+               else if (val.type == ValueType::VARCHAR) entry["columns"][colIdx].push_back(val.stringValue);
+               else if (val.type == ValueType::BOOL) entry["columns"][colIdx].push_back(val.boolValue);
+               else entry["columns"][colIdx].push_back(nullptr);
            }
            colIdx++;
        }
@@ -126,8 +131,10 @@ void modifyResult(std::string id, vector<Batch>& batches){
        if (!entry.contains("rowCount") || !entry["rowCount"].is_number_integer()) {
            entry["rowCount"] = 0;
        }
-       entry["rowCount"] = entry["rowCount"].get<int>() + batch.num_rows;
+             entry["rowCount"] = entry["rowCount"].get<int>() + batch.num_rows;
     }
+
+    log_info(std::string("modifyResult: wrote result id=") + id + std::string(" rows=") + std::to_string(entry["rowCount"].get<int>()));
 
     saveFile(basePath, results);
 }

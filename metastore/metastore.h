@@ -10,7 +10,7 @@
 #include <nlohmann/json.hpp>
 #include "../types.h"
 
-using json = nlohmann::ordered_json;;
+using json = nlohmann::ordered_json;
 
 struct TableInfo {
     uint64_t id;

@@ -14,21 +14,23 @@ COPY zstd ./zstd
 RUN make -C zstd
 
 COPY . .
-
 RUN make all
-
 
 FROM debian:12-slim
 
 RUN apt-get update && apt-get install -y \
-    libssl3 libboost-system1.74.0 libboost-thread1.74.0 libboost-filesystem1.74.0 zlib1g && \
+    libssl3 \
+    libboost-system1.74.0 \
+    libboost-thread1.74.0 \
+    libboost-filesystem1.74.0 \
+    zlib1g && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
+RUN mkdir -p /app/metastore /app/errors /app/results /app/queries /data
+
 COPY --from=build /app/main /app/main
-COPY --from=build /app/metastore /app/metastore
-COPY --from=build /app/data /app/data
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
@@ -36,4 +38,5 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 EXPOSE 8080
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["./main"]
+
+CMD ["/app/main"]
