@@ -5,7 +5,7 @@
 using std::size_t;
 
 static inline void mixHash(size_t &h, size_t v) {
-    // simple mix: xor + mul by prime
+    // xor + mul by prime
     h ^= v + 0x9e3779b97f4a7c15ULL + (h<<6) + (h>>2);
 }
 

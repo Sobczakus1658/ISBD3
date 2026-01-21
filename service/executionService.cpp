@@ -189,7 +189,6 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
         }
     }
 
-    log_info("przed csv");
     for (csv::CSVRow& row : reader) {
 
         size_t columnsToProcess = csvToTable.size();
@@ -224,7 +223,6 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
         batch.num_rows++;
 
         if (batch.num_rows == BATCH_SIZE) {
-            log_info("BATCH_SIZE");
             batches.push_back(std::move(batch));
             batch = make_empty_batch(intCount, strCount);
             for (size_t i = 0; i < batch.intColumns.size() && i < intNames.size(); ++i) batch.intColumns[i].name = intNames[i];
@@ -244,7 +242,6 @@ QueryCreatedResponse copyCSV(CopyQuery q, string query_id) {
             }
         }
     }
-    log_info(std::string("batch.num_rows") + std::to_string(batch.num_rows));
 
     if (!batches.empty() || batch.num_rows > 0) {
         if (batch.num_rows > 0) {

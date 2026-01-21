@@ -332,13 +332,6 @@ SELECT_TABLE_ERROR orderAndLimitResult(std::vector<MixBatch> &batches,
         for (const auto &r : runRows) ofs << serializeRow(r) << '\n';
         ofs.close();
         runFiles.push_back(path);
-        log_info(std::string("orderAndLimitResult: flushed run file=") + path + std::string(" rows=") + std::to_string(runRows.size()));
-        // Additional debug: list current run files so far
-        if (!runFiles.empty()) {
-            std::string list = "orderAndLimitResult: current run files:";
-            for (const auto &rf : runFiles) list += std::string(" ") + rf;
-            log_info(list);
-        }
         runRows.clear();
     };
 
@@ -356,11 +349,6 @@ SELECT_TABLE_ERROR orderAndLimitResult(std::vector<MixBatch> &batches,
     }
     flushRun();
 
-    if (!runFiles.empty()) {
-        std::string rfList = "orderAndLimitResult: merging run files:";
-        for (const auto &rf : runFiles) rfList += std::string(" ") + rf;
-        log_info(rfList);
-    }
     struct HeapItem { ResultRow row; size_t fileIdx; };
     auto cmpHeap = [&](const HeapItem &a, const HeapItem &b) { return rowCompare(b.row, a.row); };
     std::priority_queue<HeapItem, std::vector<HeapItem>, decltype(cmpHeap)> heap(cmpHeap);
@@ -373,7 +361,6 @@ SELECT_TABLE_ERROR orderAndLimitResult(std::vector<MixBatch> &batches,
         std::string line;
         if (std::getline(ifs[i], line)) {
             heap.push(HeapItem{deserializeRow(line), i});
-            log_info(std::string("orderAndLimitResult: pushed initial line from run file=") + runFiles[i]);
         }
     }
 
@@ -485,12 +472,6 @@ MixBatch mergeRunFiles(const std::vector<std::string> &runFiles, const std::vect
     auto cmpHeap = [&](const HeapItem &a, const HeapItem &b) { return rowCompareLocal(b.row, a.row); };
     std::priority_queue<HeapItem, std::vector<HeapItem>, decltype(cmpHeap)> heap(cmpHeap);
 
-    if (!runFiles.empty()) {
-        std::string rfList = "mergeRunFiles: merging run files:";
-        for (const auto &rf : runFiles) rfList += std::string(" ") + rf;
-        log_info(rfList);
-    }
-
     std::vector<std::ifstream> ifs;
     ifs.reserve(runFiles.size());
     for (const auto &p : runFiles) ifs.emplace_back(p);
@@ -511,7 +492,6 @@ MixBatch mergeRunFiles(const std::vector<std::string> &runFiles, const std::vect
         std::string line;
         if (std::getline(ifs[i], line)) {
             heap.push(HeapItem{deserializeRowLocal(line), i});
-            log_info(std::string("mergeRunFiles: pushed initial line from run file=") + runFiles[i]);
         }
     }
 
