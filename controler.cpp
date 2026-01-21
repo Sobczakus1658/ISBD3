@@ -382,8 +382,7 @@ double getUptimeSeconds() {
 void getSystemHandler(const shared_ptr<Session> session) {
     log_info("handler getSystemHandler entered");
     json info = getSystemInfo();
-    int64_t uptime_secs = static_cast<int64_t>(std::floor(getUptimeSeconds()));
-    info["uptime"] = uptime_secs;
+    info["uptime"] = getUptimeSeconds();
     closeConnection(session, 200, info.dump());
 }
 
