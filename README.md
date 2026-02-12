@@ -55,9 +55,9 @@ Detailed procedure:
 ### Common Subexpression Elimination (CSE)
 Common Subexpression Elimination (CSE) - Tree Optimization: An advanced optimizer has been implemented to detect identical sub-operations within a query
 
-    * **Expression Tree Hashing**: Every expression (e.g., function, operator) is represented as a tree. The system recursively calculates a unique hash for each node, depending on the operation type and the hashes of its children
-    * **Commutativity Support:** For commutative operations (e.g., a + b and b + a), the children are sorted by their hash values before calculating the parent's hash, allowing the detection of identical operations regardless of the input order
-    * **Result**: Common subtrees are calculated only once during the input projection phase and stored in a temporary column used by other operators.
+- **Expression Tree Hashing**: Every expression (e.g., function, operator) is represented as a tree. The system recursively calculates a unique hash for each node, depending on the operation type and the hashes of its children
+- **Commutativity Support:** For commutative operations (e.g., a + b and b + a), the children are sorted by their hash values before calculating the parent's hash, allowing the detection of identical operations regardless of the input order
+- **Result**: Common subtrees are calculated only once during the input projection phase and stored in a temporary column used by other operators.
 
 
 #### External Merge Sort:
