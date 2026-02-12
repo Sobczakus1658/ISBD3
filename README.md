@@ -1,167 +1,78 @@
-# Projekt numer 2
+# Custom Analytical DBMS Project
 
-# Uruchomienie programu 
-Aby poprawnie uruchomić projekt, należy pobrać repozytorium wraz z jego podmodułami (biblioteką `zstd`, wykorzystywaną do kompresji napisów, `cpp-restbed-server` do korzystania z REST-API oraz `csv-parser` do parsowania plików csv)
+An original project of an analytical Database Management System (DBMS), designed for high-performance processing of large datasets (Big Data). The system is based on a proprietary columnar format and data compression
 
-UWAGA: wykonanie tej komendy może potrwać nawet kilka minut !
+## Running the Program
 
-`git submodule update --init --recursive`
+### Prerequisites
+The project uses git submodules: `zstd` (compression), `cpp-restbed-server` (REST API), and `csv-parser`. To clone the repository along with its dependencies, run:
 
-Następnie należy zbudować obraz dockera (powinno potrwać koło 5 minut) :
+```bash
+# This may take a few minutes
+git submodule update --init --recursive
 
-`docker build -t isbd . `
+# Building the docker image
+docker build -t isbd . 
 
-a następnie uruchomić aplikację w dockerze :
+# Running the application
+`./run_docker.sh
+```
 
-`./run_docker.sh`
+Query results and errors are logged to persistent files: `queries.json`, `errors.json`, and `results.json`. These remain available even after an application restart. While the program is running, you can view information about existing tables in the `metadata.json` file.
 
-## Wymagania testów:
-należy miec pobranę bibliotekę cpr 
+### System Architecture
+#### Storage Layer
+Data is stored in a proprietary binary format that is column-oriented. This format minimizes I/O operations by allowing only the columns required by a query to be read
 
-Testy znajdują się w folderze tests, najpierw należy wykonać:
+#### Data Compression
+Dedicated algorithms have been applied for different data types:
+1) Numerical Columns (INT64): A hybrid of Delta Encoding and Variable Length Int Encoding is used. A delta_base is subtracted from each value in the batch.
+2) Text Columns (VARCHAR): Compression using the zstd library.
 
-`cd tests `
-`make`
 
-a następnie je uruchomić komendą:
-
-`.\run_tests`
-
-# Omówienie projektu
-
-1) Testy zostały przygotowane do działania w środowisku Dockera. Przy uruchomieniu programu lokalnie ( `make` i `.\main`) mogą pojawić się problemy ze ścieżkami do pliku CSV.
-2) Wyniki zapytań zapisujemy do plików: `queries.json`, `errors.json` oraz `results.json`. Są one zawsze dostępne, nawet przy zrestartowaniu aplikacji.
-3) Obecnie program działa jednowątkowo, więc nie ma ryzyka równoczesnego odczytu nieukończonych transakcji. Podczas importu danych z CSV najpierw tworzone są wszytskie pliki, a dopiero po zakończeniu tej operacji ich ścieżki i nazwy trafiają do metastore. Dzięki temu, nawet w przyszłej wersji z wieloma wątkami, nie pojawi się sytuacja, w której inny proces odczyta dane z niedokończonej transakcji.
-
-# Projekt numer 1  
-Poniżej znajduje się opis uruchomienia i działania pierwszej części projektu. W tej części należało zaimplementować format pliku do przechowywania danych, napisać serializator i deserializator umożliwiające zapis i odczyt danych w tym formacie oraz skompresować je przed zapisem. Wartości liczbowe zostały skompresowane przy użyciu metody Delta Int Encoding połączonej z Variable Length Int Encoding. Skorzystałem z biblioteki zstd do kompresji napisów. 
-
-# Uruchomienie programu 
-Aby poprawnie uruchomić projekt, należy pobrać repozytorium wraz z jego podmodułami (biblioteką `zstd`, wykorzystywaną do kompresji napisów): 
-
-`git submodule update --init --recursive`
-
-Następnie należy wykonać:  
-`make`  
-`./main`  
-Polecenie `make` może zająć trochę czasu, ponieważ kompiluje również pliki z dołączonego repozytorium `zstd`. Komenda `./main` uruchomi testy.
-
-# Opis działania programu 
-
-Zakładam, że na wejściu dostanę wektor Batchy, zapewnie to sobie pisząc kolejną część programu. Batch ma następującą strukturę:
-
-<pre> struct Batch {
-    vector < IntColumn > intColumns;
-    vector < StringColumn > stringColumns;
-    size_t num_rows;
-}; </pre>
-
-Pole `num_rows` oznacza liczbę wierszy w batchu (domyślnie 8192 - wartość ustawiona w `types.h`). Każdy batch składa się z kolumn liczbowych oraz kolumn tekstowych.
-
-## Kompresja kolumn liczbowych
-
-Kolumny liczbowe (`IntColumn`) są przekształcane do postaci:
-
-<pre>struct EncodeIntColumn {
-    string name;
-    vector < uint8_t > compressed_data;
-    int64_t delta_base;
-};</pre>
-gdzie `delta_base` to najmniejsza wartość w kolumnie w ramach jednego batchu.
-Proces kompresji przebiega w dwóch etapach:
-1. **Delta int encoding** - od każdej wartości w kolumnie odejmowana jest wartość `delta_base`, dzięki czemu powstaje wektor dodatnich liczb.
-2. **Variable length int encoding** - powstałe dane są dodatkowo kompresowane zmienną długością bajtów.
-
-## Kompresja kolumn tekstowych
-Kolumny tekstowe są przekształcane do następującej struktury: 
-
-<pre>struct EncodeStringColumn {
-    string name;
-    vector < uint8_t > compressed_data;
-    uint32_t uncompressed_size;  
-    uint32_t compressed_size;
-};</pre>
-Do kompresji napisów używana jest biblioteka **zstd** z poziomem kompresji `3`
-
-## Optymalizacja pamięci i efektywnośc odczytu
-W wielu miejscach wykorzystano metodę `std::move`, aby uniknąć zbędnych kopii dużych obiektów oraz przekazywanie danych przez referencję. By zapewność ciągłość zapisu danych użyto również **prealokację pamięci** dla wektorów.
-
-## Format zapisu pliku
-Każdy plik binarny zaczyna się od `file_magic`, który pozwala sprawdzić, czy otwierany plik jest prawidłowego formatu.
-Dane są zapisywane w pliku, do momentu aż jego rozmiar nie przekroczy wartości `PART_LIMIT` (domyślnie ustawionej na 3.5 GB). Wtedy na koniec pliku zapisywana jest mapa (opisana poniżej), a program otwiera nowy plik.
-
-Przykładowa mapa kolumn wygląda następująco: 
-
-| Nazwa kolumny  | offset    |
-|----------------|-----------|
-| Nazwa_1        | offset_1  |
-| Nazwa_2        | offset_2  |
-| Nazwa_3        | offset_3  |
-| Nazwa_4        | offset_4  |
-
-### Algorytm zapisu batcha
-Poniżej został przedstawiony graficzny sposob zapisu:
+#### Batch Write Algorithm
+The graphical representation of the write process is shown below:
 ![](file.png)
 
-Rozpiszmy teraz proces postępowania:
-1. Zapisz `batch_magic`, liczbę wierszy oraz liczbę kolumn liczbowych i tekstowych.
-2. Dla każdej kolumny zapisz offset wskazujący, gdzie w poprzednim batchu zaczyna się kolumna o tej samej nazwie, a następnie zapisz metadane kolumny (długość nazwy kolumny, wielkość skompresowanych danych itd) oraz skompresowane dane.
-3. Przy każdym zapisie kolumny zaktualizuj mapę, w pierwszym batchu wszystkie offsety mają wartość 0.
-4. Gdy plik przekroczy limit rozmiaru `PART_LIMIT`, aktualny stan mapy zapisz na końcu pliku. Następnie zmodyfikuj wartości mapy ustawiając wszędzie offsety równe 0 i zamknij plik.
+Detailed procedure:
+1. Write the batch_magic, the number of rows, and the number of numerical and text columns.
+2. For each column, write an offset pointing to where the column with the same name begins in the previous batch, then write column metadata (column name length, compressed data size, etc.) and the compressed data.
+3. Update the map with each column write; in the first batch, all offsets are set to 0.
+4. When the file exceeds the PART_LIMIT size limit, save the current state of the map at the end of the file. Then, modify the map values by setting all offsets to 0 and close the file.
 
-### Algorytm efektywnego odczytu kolumny
-1) Otwórz plik.
-2) Przejdź na jego koniec i odczytaj zakodowaną mapę kolumn.
-3) Odczytaj offset odpowiadający nazwie kolumny.
-4) Przejdź do tego offsetu i odczytaj dane z kolumny z batcha
-5) W metadanych kolumny zapisana jest jej długość, dzięki czemu wiadomo, ile bajtów należy odczytać
-7) Odczytaj offset do kolumny o tej samej nazwie z poprzedniego batcha z metadanych kolumny
-6) Powtarzaj kroki 4-7, dopóki offset w metadanych nie będzie wynosił 0.
+#### Efficient Column Read Algorithm
+1) Open the file.
+2) Go to the end of the file and read the encoded column map.
+3) Read the offset corresponding to the column name.
+4) Move to that offset and read the column data from the batch.
+5) The column metadata contains its length, so the system knows how many bytes to read
+7) Read the offset to the column with the same name from the previous batch (from the metadata).
+6) Repeat steps 4-7 until the offset in the metadata is 0.
 
-Dzięki takiemu rozwiązaniu przeczytanie konkretnej kolumny z pliku będzie efektywne, bo nie wymaga przeczytania całej zawartości. Podział danych na mniejsze pliki również sprzyja prędkości odczytu, bo pojedynczy plik zmieści się do pamięci RAM.
-W przypadku wielu plików rozwiązanie te wspiera możliwość równoległego odczytu.
 
-# Organizacja plików
-## Validation
-Udostępnia zestaw funkcji do sprawdzania poprawności danych, w tym sprawdzenia czy dwa batche zawierają te same dane.
+## Key Functionalities and Optimizations
 
-## Statistics
-Udostępnia zestaw funkcji umożliwiających obliczenie niezbędnych statystyk:
-- dla kolumny z danymi liczbowymi -  średnią wartość,
-- dla kolumny z napisami - częstotliwość wystąpienia każdego znaku ASCII.
+### Common Subexpression Elimination (CSE)
+Common Subexpression Elimination (CSE) - Tree Optimization: An advanced optimizer has been implemented to detect identical sub-operations within a query
 
-## Seralization
-### Deserializator
-Udostępnia funkcję, do odczytu danych z pliku.
-Odczytuje plik z podanej ścieżki, konwertuje go na kolekcję batchy. Druga funkcja natomiast umożliwia szybki odczyt kolumny o podanej nazwie z konkretnego pliku.
+    * **Expression Tree Hashing**: Every expression (e.g., function, operator) is represented as a tree. The system recursively calculates a unique hash for each node, depending on the operation type and the hashes of its children
+    * **Commutativity Support:** For commutative operations (e.g., a + b and b + a), the children are sorted by their hash values before calculating the parent's hash, allowing the detection of identical operations regardless of the input order
+    * **Result**: Common subtrees are calculated only once during the input projection phase and stored in a temporary column used by other operators.
 
-### Serializator
-Zapisuje do folderu pliki z zserializowanymi danymi.
 
-## Codec
-Udostępnia funkcje do kompresji i dekompresji liczb oraz napisów. Udostępnia również funkcje mappujące:
-- `StringColumn` ↔  `EncodeStringColumn`
-- `IntColumn`    ↔  `EncodeIntcolumn` 
+#### External Merge Sort:
+External Merge Sort: To enable sorting of data exceeding available RAM, a two-phase algorithm was implemented
+1.  **Run Generation Phase:** The system reads portions of data to fill the memory buffer, sorts them (In-Memory Sort), and flushes them to disk as temporary sorted files (runs).
+2.  **Merge Phase:** Utilizes a k-way merge mechanism. The system opens all temporary files simultaneously, and a priority queue (Heap) selects the smallest element among the leading elements of all series, producing the final result in a streaming fashion.
 
-## Types
-Zawiera definicje stałych oraz używanych struktur danych
 
-## Batches
-W tym folderze zapisywane są pliki w wybranym formacie binarym.
+#### Validation and Planning:
+Before a query is executed, the ***Planner*** performs semantic validation
+1.  Verifies the existence of columns in the Metastore.
+2.  Checks type compatibility (e.g., ensuring text is not divided by a number).
+3.  Ensures that the expression in the WHERE clause returns a boolean type (BOOL).
 
-## Tests
 
-W pliku `main.cpp` wywoływane są testy z pliku `tests`. Dostępne są cztery testy:
-### 1. SimpleTest
-Sprawdza czy batche przed zapisem oraz po procesie **serialiacja →  zapis do pliku →  deserializacja** są identyczne. No końcu testu wyświetlane są oczekiwane statystyki.
-### 2. ColumnTest
-Odczytuje konkretną kolumnę z pliku (zawierającego kilka batchy) i sprawdza poprawność odczytu.
-### 3. SomeFilesTest
-Dla bardzo dużego `vector<Batches>` sprawdza, czy dane zostaną poprawnie zapisane w kilku plikach i czy każdy z nich ma poprawną strukturę.
-### 4. BigTest
-Analogiczny do `SimpleTest`, ale wykonywany na większych danych.
+#### Example Usage
 
-Na końcu testów uruchamiana jest funkcja, usuwająca wszystkie pliki powstałe podczas testów.
-
-## Plik 
-W folderze `\example` znajduje się przykładowy plik, z którego będziemy deserializować dane.
+Queries should comply with the grammar provided in the interface.yaml file. The example.txt file contains sample queries that can be executed
