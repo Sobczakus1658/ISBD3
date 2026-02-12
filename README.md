@@ -75,4 +75,4 @@ Before a query is executed, the ***Planner*** performs semantic validation
 
 #### Example Usage
 
-Queries should comply with the grammar provided in the interface.yaml file. The example.txt file contains sample queries that can be executed
+Queries should comply with the grammar provided in the interface.yaml file.
